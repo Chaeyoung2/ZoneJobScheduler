@@ -1,0 +1,66 @@
+# CMake build directories
+out/
+build/
+cmake-build-debug/
+cmake-build-release/
+cmake-build-*/
+
+# Visual Studio
+.vs/
+.vscode/
+*.sln
+*.vcxproj
+*.vcxproj.filters
+*.vcxproj.user
+
+# Build artifacts
+*.o
+*.a
+*.lib
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Debug/Release directories
+Debug/
+Release/
+x64/
+x86/
+
+# Object files
+*.obj
+*.pdb
+*.ilk
+
+# CMake
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+*.cmake
+Makefile
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+*.swp
+*.swo
+*~
+.idea/
+*.user
+
+# Compiler/Build temp files
+*.ii
+*.s
+*.d
+*.deps
+*.P
+
+# Ninja
+.ninja_*
+*.ninja
+
+# vcpkg (if used)
+vcpkg_installed/
