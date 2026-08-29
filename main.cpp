@@ -78,7 +78,7 @@ void test_with_thread_pool()
 	}
 
 	int expected = kProducers * kJobsPerProducer;
-	std::cout << "[no_lost_or_duplicate] expected=" << expected << " actual=" << executedCount << "\n";
+	std::cout << "[test_with_thread_pool] expected=" << expected << " actual=" << executedCount << "\n";
 	assert(executedCount == expected);
 }
 
