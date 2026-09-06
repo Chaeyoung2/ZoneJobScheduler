@@ -5,8 +5,8 @@
 #include <functional>
 
 using Job = std::function<void()>;
-class JobQueue {
-
+class JobQueue 
+{
 public:
 	void shut_down()
 	{
@@ -16,12 +16,36 @@ public:
 
 		cv.notify_all();
 	}
-	void push(const Job& job);
-	bool pop(Job& job);
+	void push(const Job & job)
+	{
+		std::unique_lock<std::mutex> lock(mutex);
+		job_queue.push(job);
+		cv.notify_one();
+	}
+	bool pop(Job& job)
+	{
+		std::unique_lock<std::mutex> lock(mutex);
+
+		cv.wait(lock,
+			[this]
+			{
+				if (job_queue.empty() == false || is_shutdown == true)
+					return true;
+				return false;
+			});
+
+		if (job_queue.empty())
+			return false;
+
+		job = job_queue.front();
+		job_queue.pop();
+
+		return true;
+	}
 
 private:
 	std::mutex mutex;
 	std::condition_variable cv;
 	std::queue<Job> job_queue;
-	bool is_shutdown;
+	bool is_shutdown = false;
 };
