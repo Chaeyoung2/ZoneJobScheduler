@@ -1,8 +1,10 @@
 #pragma once
 #include <queue>
 #include <mutex>
+#include <condition_variable>
+#include <functional>
 
-class Job;
+using Job = std::function<void()>;
 class JobQueue {
 
 public:
@@ -20,6 +22,6 @@ public:
 private:
 	std::mutex mutex;
 	std::condition_variable cv;
-	std::queue job_queue;
+	std::queue<Job> job_queue;
 	bool is_shutdown;
 };
