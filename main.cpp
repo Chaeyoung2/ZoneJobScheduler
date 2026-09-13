@@ -1,67 +1,39 @@
-#include "JobQueue.h"
+#include "ZoneScheduler.h"
 #include "ThreadPool.h"
 #include "Actor.h"
+#include "Producer.h"
 #include <thread>
 #include <vector>
 #include <atomic>
 #include <cassert>
 #include <iostream>
+#include <memory>
 
 int main()
 {
-	JobQueue job_queue;
-
-	std::atomic<int> popped_count{ 0 };
-	const int producer_count = 4;
+	const int zone_count = 4;
+	const int worker_thread_count = 8;
+	const int producer_thread_count = 4;
 	const int jobs_per_producer = 1000;
-	const int actor_count = 4;
-	const int actor_maxhp = 100;
-	bool all_dead = true;
+	const int actor_count = 100;
 
-		std::vector<std::thread> producers;
-		std::vector<Actor> actors;
+	// zone scheduler를 만든다.
+	ZoneScheduler scheduler(zone_count);
 
+	// thread pool을 만든다.
+	ThreadPool pool(worker_thread_count, scheduler);
+
+	// producer thread를 만든다.
+	// // thread는 복사할 수 없으므로 producer 객체를 vector 안에 직접 저장하지 말고, 
+	// // 주소가 안정적인 별도 객체로 생성하여 unique_ptr을 저장하는 방향이 적절하다. (vector가 재할당되더라도 이동하는 것은 unique_ptr임)
+	std::vector<std::unique_ptr<Producer>> producers;
+
+	for (int i = 0; i < producer_thread_count; i++)
 	{
-		ThreadPool pool(4, job_queue);
-
-
-		for(int i = 0 ; i < actor_count; ++i)
-			actors.emplace_back(actor_maxhp, actor_maxhp);
-
-		for (int i = 0; i < producer_count; ++i)
-		{
-			producers.emplace_back([&job_queue, &popped_count, &actors, i]()
-				{
-					for (int j = 0; j < jobs_per_producer; ++j)
-					{
-						Job job = [i, &popped_count, &actors] {
-							popped_count++;
-							 actors[i].take_damage(1);
-							 };
-						job_queue.push(job);
-					}
-				});
-		}
-
-		for (auto& producer : producers)
-		{
-			producer.join();
-		}
-
-		job_queue.shut_down();
-		
+		producers.emplace_back(
+			std::make_unique<Producer>(scheduler, jobs_per_producer, zone_count));
 	}
 
-
-		for(auto& a : actors)
-		{
-			if(a.get_hp() > 0)
-				all_dead = false;
-		}
-
-	assert( 
-		(popped_count == producer_count * jobs_per_producer)
-		&&
-		all_dead == true
-	);
+	for (auto& p : producers)
+		p->join();
 }

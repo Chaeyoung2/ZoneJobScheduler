@@ -16,7 +16,7 @@ public:
 
 		cv.notify_all();
 	}
-	void push(const Job & job)
+	void push(const Job& job)
 	{
 		std::unique_lock<std::mutex> lock(mutex);
 		job_queue.push(job);

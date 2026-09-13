@@ -21,7 +21,7 @@ public:
     }
     
 private:
-    int max_hp;
+    int max_hp = 100;
     int hp;
 };
 
