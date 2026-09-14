@@ -1,6 +1,7 @@
 #pragma once
 #include <queue>
 #include <mutex>
+#include <condition_variable>
 #include "Zone.h"
 
 class ReadyQueue
@@ -11,28 +12,42 @@ public:
 
 	void push(Zone* zone)
 	{
-		std::lock_guard<std::mutex> lock(mutex);
-		ready_queue.push(zone);
+		{
+			std::lock_guard<std::mutex> lock(mutex);
+			ready_queue.push(zone);
+		}
 
 		cv.notify_one();
 	}
 
-	bool pop(Zone* zone)
+	bool pop(Zone*& zone)
 	{
-		zone = nullptr;
+		std::unique_lock<std::mutex> lock(mutex);
 
-		std::lock_guard<std::mutex> lock(mutex);
-		if (ready_queue.empty() == false)
-		{
-			zone = ready_queue.front();
-			ready_queue.pop();
-			return true;
-		}
-		return false;
+		cv.wait(lock, [this] {
+			return (ready_queue.empty() == false || is_shut_down == true);
+			});
+
+		if (ready_queue.empty() == true)
+			return false;
+
+		zone = ready_queue.front();
+		ready_queue.pop();
+
+		return true;
+	}
+
+	bool get_shut_down()
+	{
+		return is_shut_down;
 	}
 
 	void shut_down()
 	{
+		{
+			std::lock_guard<std::mutex> lock(mutex);
+			is_shut_down = true;
+		}
 		cv.notify_all();
 	}
 
@@ -56,4 +71,5 @@ private:
 	std::mutex mutex;
 	std::condition_variable cv;
 	std::queue<Zone*> ready_queue;
+	bool is_shut_down = false;
 };

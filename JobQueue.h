@@ -43,6 +43,19 @@ public:
 		return true;
 	}
 
+	bool try_pop(Job& job)
+	{
+		std::lock_guard<std::mutex> lock(mutex);
+
+		if (job_queue.empty())
+			return false;
+
+		job = job_queue.front();
+		job_queue.pop();
+
+		return true;
+	}
+
 private:
 	std::mutex mutex;
 	std::condition_variable cv;

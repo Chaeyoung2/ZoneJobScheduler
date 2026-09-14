@@ -65,3 +65,4 @@ Thumbs.db
 # vcpkg (if used)
 vcpkg_installed/
 CLAUDE.md
+AGENTS.md

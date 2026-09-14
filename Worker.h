@@ -23,19 +23,23 @@ public:
 		// zone scheduler에서 ready queue를 가져온다. 
 		// ready queue에서 스케쥴이 되지 않은 zone을 가져온다. 
 		// zone의 job_queue에서 job을 얻어와 실행한다.
+
+		auto& ready_queue = zone_scheduler.get_ready_queue();
+
 		while (true)
 		{
-			auto& ready_queue = zone_scheduler.get_ready_queue();
-
 			Zone* zone = nullptr;
-			if (ready_queue.pop(zone) == true && zone != nullptr)
-			{
-				// zone의 작업들을 실행한다.
-				auto& job_queue = zone->get_job_queue();
 
-				Job job;
-				if (job_queue.pop(job) == true)
-					job();
+			if (ready_queue.pop(zone) == false)
+				break;
+
+			// zone의 작업들을 실행한다.
+			auto& job_queue = zone->get_job_queue();
+
+			Job job;
+			while (job_queue.try_pop(job) == true)
+			{
+				job();
 			}
 		}
 	}
@@ -53,5 +57,5 @@ public:
 private:
 	ZoneScheduler& zone_scheduler;
 	std::thread worker_thread;
-	bool is_shut_down;
+	bool is_shut_down = false;
 };

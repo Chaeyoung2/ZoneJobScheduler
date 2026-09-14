@@ -15,6 +15,7 @@ public:
 	}
 	~ZoneScheduler() 
 	{
+		ready_queue.shut_down();
 	}
 
 	bool submit(int zone_id, const Job& job)
