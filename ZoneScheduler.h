@@ -15,7 +15,6 @@ public:
 	}
 	~ZoneScheduler() 
 	{
-		ready_queue.shut_down();
 	}
 
 	bool submit(int zone_id, const Job& job)
@@ -36,6 +35,11 @@ public:
 	ReadyQueue& get_ready_queue()
 	{
 		return ready_queue;
+	}
+
+	void shut_down()
+	{
+		ready_queue.shut_down();
 	}
 
 private:

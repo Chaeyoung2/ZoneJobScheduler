@@ -36,4 +36,8 @@ int main()
 
 	for (auto& p : producers)
 		p->join();
+
+	scheduler.shut_down();
+
+	pool.join();
 }

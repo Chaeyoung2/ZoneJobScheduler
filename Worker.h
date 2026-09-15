@@ -31,7 +31,9 @@ public:
 			Zone* zone = nullptr;
 
 			if (ready_queue.pop(zone) == false)
+			{
 				break;
+			}
 
 			// zone의 작업들을 실행한다.
 			auto& job_queue = zone->get_job_queue();
@@ -40,6 +42,16 @@ public:
 			while (job_queue.try_pop(job) == true)
 			{
 				job();
+			}
+
+			zone->set_scheduled(false);
+
+			if (job_queue.get_empty() == false)
+			{
+				if (zone->set_scheduled(true) == true)
+				{
+					ready_queue.push(zone);
+				}
 			}
 		}
 	}

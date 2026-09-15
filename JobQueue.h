@@ -48,12 +48,20 @@ public:
 		std::lock_guard<std::mutex> lock(mutex);
 
 		if (job_queue.empty())
+		{
 			return false;
+		}
 
 		job = job_queue.front();
 		job_queue.pop();
 
 		return true;
+	}
+
+	bool get_empty()
+	{
+		std::lock_guard<std::mutex> lock(mutex);
+		return job_queue.empty();
 	}
 
 private:

@@ -48,6 +48,14 @@ public:
 		}
 	}
 
+	bool set_scheduled(bool _scheduled)
+	{
+		bool expected = !_scheduled;
+		if (is_scheduled.compare_exchange_strong(expected, _scheduled) == false)
+			return false;
+		return true;
+	}
+
 private:
 	const int zone_id;
 	std::atomic<bool> is_scheduled;

@@ -19,6 +19,10 @@ public:
     }
     ~ThreadPool()
     {
+    }
+
+    void join()
+    {
         for (auto& w : workers)
         {
             w->join();
