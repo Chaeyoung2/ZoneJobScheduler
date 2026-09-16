@@ -3,23 +3,23 @@
 Actor::Actor() = default;
 
 Actor::Actor(int initialMaxHp, int initialHp)
-    : maxHp(initialMaxHp),
-      hp(initialHp)
+    : m_maxHp(initialMaxHp),
+      m_hp(initialHp)
 {
 }
 
 void Actor::takeDamage(unsigned int damage)
 {
-    if (damage > hp)
+    if (damage > m_hp)
     {
-        hp = 0;
+        m_hp = 0;
         return;
     }
 
-    hp -= damage;
+    m_hp -= damage;
 }
 
 int Actor::getHp()
 {
-    return hp;
+    return m_hp;
 }

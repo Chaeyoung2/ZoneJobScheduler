@@ -19,6 +19,6 @@ public:
 	void shutDown();
 
 private:
-	std::vector<std::unique_ptr<Zone>> zones;
-	ReadyQueue readyQueue;
+	std::vector<std::unique_ptr<Zone>> m_zones;
+	ReadyQueue m_readyQueue;
 };

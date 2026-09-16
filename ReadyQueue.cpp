@@ -3,29 +3,29 @@
 void ReadyQueue::push(Zone* zone)
 {
 	{
-		std::lock_guard<std::mutex> lock(mutex);
-		readyQueue.push(zone);
+		std::lock_guard<std::mutex> lock(m_mutex);
+		m_readyQueue.push(zone);
 	}
 
-	cv.notify_one();
+	m_cv.notify_one();
 }
 
 bool ReadyQueue::pop(Zone*& zone)
 {
-	std::unique_lock<std::mutex> lock(mutex);
+	std::unique_lock<std::mutex> lock(m_mutex);
 
-	cv.wait(lock, [this]()
+	m_cv.wait(lock, [this]()
 		{
-			return readyQueue.empty() == false || isShutDown;
+			return m_readyQueue.empty() == false || m_isShutDown;
 		});
 
-	if (readyQueue.empty())
+	if (m_readyQueue.empty())
 	{
 		return false;
 	}
 
-	zone = readyQueue.front();
-	readyQueue.pop();
+	zone = m_readyQueue.front();
+	m_readyQueue.pop();
 
 	return true;
 }
@@ -33,9 +33,9 @@ bool ReadyQueue::pop(Zone*& zone)
 void ReadyQueue::shutDown()
 {
 	{
-		std::lock_guard<std::mutex> lock(mutex);
-		isShutDown = true;
+		std::lock_guard<std::mutex> lock(m_mutex);
+		m_isShutDown = true;
 	}
 
-	cv.notify_all();
+	m_cv.notify_all();
 }

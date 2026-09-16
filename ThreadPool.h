@@ -15,5 +15,5 @@ public:
 	void join();
 
 private:
-	std::vector<std::unique_ptr<Worker>> workers;
+	std::vector<std::unique_ptr<Worker>> m_workers;
 };

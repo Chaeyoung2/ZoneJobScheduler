@@ -24,9 +24,9 @@ public:
 	void join();
 
 private:
-	ZoneScheduler& zoneScheduler;
-	int jobsPerProducer;
-	const int zoneCount;
-	JobFactory jobFactory;
-	std::thread producerThread;
+	ZoneScheduler& m_zoneScheduler;
+	int m_jobsPerProducer;
+	const int m_zoneCount;
+	JobFactory m_jobFactory;
+	std::thread m_producerThread;
 };

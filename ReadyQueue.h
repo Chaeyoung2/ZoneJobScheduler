@@ -13,8 +13,8 @@ public:
 	void shutDown();
 
 private:
-	std::mutex mutex;
-	std::condition_variable cv;
-	std::queue<Zone*> readyQueue;
-	bool isShutDown = false;
+	std::mutex m_mutex;
+	std::condition_variable m_cv;
+	std::queue<Zone*> m_readyQueue;
+	bool m_isShutDown = false;
 };

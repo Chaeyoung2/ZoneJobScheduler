@@ -2,57 +2,57 @@
 
 void JobQueue::shutDown()
 {
-	std::unique_lock<std::mutex> lock(mutex);
-	isShutdown = true;
+	std::unique_lock<std::mutex> lock(m_mutex);
+	m_isShutdown = true;
 	lock.unlock();
 
-	cv.notify_all();
+	m_cv.notify_all();
 }
 
 void JobQueue::push(const Job& job)
 {
-	std::unique_lock<std::mutex> lock(mutex);
-	jobQueue.push(job);
-	cv.notify_one();
+	std::unique_lock<std::mutex> lock(m_mutex);
+	m_jobQueue.push(job);
+	m_cv.notify_one();
 }
 
 bool JobQueue::pop(Job& job)
 {
-	std::unique_lock<std::mutex> lock(mutex);
+	std::unique_lock<std::mutex> lock(m_mutex);
 
-	cv.wait(lock, [this]()
+	m_cv.wait(lock, [this]()
 		{
-			return jobQueue.empty() == false || isShutdown;
+			return m_jobQueue.empty() == false || m_isShutdown;
 		});
 
-	if (jobQueue.empty())
+	if (m_jobQueue.empty())
 	{
 		return false;
 	}
 
-	job = jobQueue.front();
-	jobQueue.pop();
+	job = m_jobQueue.front();
+	m_jobQueue.pop();
 
 	return true;
 }
 
 bool JobQueue::tryPop(Job& job)
 {
-	std::lock_guard<std::mutex> lock(mutex);
+	std::lock_guard<std::mutex> lock(m_mutex);
 
-	if (jobQueue.empty())
+	if (m_jobQueue.empty())
 	{
 		return false;
 	}
 
-	job = jobQueue.front();
-	jobQueue.pop();
+	job = m_jobQueue.front();
+	m_jobQueue.pop();
 
 	return true;
 }
 
 bool JobQueue::getEmpty()
 {
-	std::lock_guard<std::mutex> lock(mutex);
-	return jobQueue.empty();
+	std::lock_guard<std::mutex> lock(m_mutex);
+	return m_jobQueue.empty();
 }

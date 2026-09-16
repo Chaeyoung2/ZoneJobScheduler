@@ -14,7 +14,7 @@ public:
 	void shutDown();
 
 private:
-	ZoneScheduler& zoneScheduler;
-	std::thread workerThread;
-	bool isShutDown = false;
+	ZoneScheduler& m_zoneScheduler;
+	std::thread m_workerThread;
+	bool m_isShutDown = false;
 };

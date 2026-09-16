@@ -20,9 +20,9 @@ public:
 	bool setScheduled(bool scheduled);
 
 private:
-	const int zoneId;
-	std::atomic<bool> isScheduled;
-	JobQueue jobQueue;
-	std::vector<Actor> actors;
-	int actorCount = 100;
+	const int m_zoneId;
+	std::atomic<bool> m_isScheduled;
+	JobQueue m_jobQueue;
+	std::vector<Actor> m_actors;
+	int m_actorCount = 100;
 };

@@ -16,8 +16,8 @@ public:
 	bool getEmpty();
 
 private:
-	std::mutex mutex;
-	std::condition_variable cv;
-	std::queue<Job> jobQueue;
-	bool isShutdown = false;
+	std::mutex m_mutex;
+	std::condition_variable m_cv;
+	std::queue<Job> m_jobQueue;
+	bool m_isShutdown = false;
 };

@@ -7,8 +7,8 @@
 #include "ZoneScheduler.h"
 
 Worker::Worker(ZoneScheduler& scheduler)
-	: zoneScheduler(scheduler),
-	  workerThread(&Worker::run, this)
+	: m_zoneScheduler(scheduler),
+	  m_workerThread(&Worker::run, this)
 {
 }
 
@@ -16,7 +16,7 @@ Worker::~Worker() = default;
 
 void Worker::run()
 {
-	ReadyQueue& readyQueue = zoneScheduler.getReadyQueue();
+	ReadyQueue& readyQueue = m_zoneScheduler.getReadyQueue();
 
 	while (true)
 	{
@@ -49,10 +49,10 @@ void Worker::run()
 
 void Worker::join()
 {
-	workerThread.join();
+	m_workerThread.join();
 }
 
 void Worker::shutDown()
 {
-	isShutDown = true;
+	m_isShutDown = true;
 }

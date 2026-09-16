@@ -27,7 +27,7 @@ ZoneScheduler::submit(zoneId, job)
    v
 Zone별 JobQueue
    |
-   | isScheduled CAS (false -> true)
+   | m_isScheduled CAS (false -> true)
    v
 전역 ReadyQueue<Zone>
    |
@@ -39,12 +39,12 @@ Zone의 Job을 순차 실행
 ```
 
 ReadyQueue에는 Job이 아니라 실행 가능한 Zone이 들어갑니다. 
-Zone의 `isScheduled`가 `true`이면, 
+Zone의 `m_isScheduled`가 `true`이면,
 해당 Zone이 ReadyQueue에 있거나 Worker에 의해 처리 중이라는 뜻입니다. 
 `false -> true` 전환에 성공한 주체만 Zone을 ReadyQueue에 등록하므로 
 같은 Zone이 여러 Worker에 동시에 배정되는 것을 방지합니다.
 
-Worker가 Zone의 현재 Job을 모두 처리하면 `isScheduled`를 `false`로 바꾸고 JobQueue를 다시 확인합니다. 
+Worker가 Zone의 현재 Job을 모두 처리하면 `m_isScheduled`를 `false`로 바꾸고 JobQueue를 다시 확인합니다.
 그 사이 새 Job이 들어왔다면 CAS를 통해 Zone을 다시 ReadyQueue에 등록하여 Job 유실을 방지합니다.
 
 ## 주요 구성 요소

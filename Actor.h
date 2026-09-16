@@ -10,8 +10,8 @@ public:
     int getHp();
     
 private:
-    int maxHp = 100;
-    int hp = 100;
+    int m_maxHp = 100;
+    int m_hp = 100;
 };
 
 
