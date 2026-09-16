@@ -1,4 +1,4 @@
-#pragma once
+ï»¿#pragma once
 #include <thread>
 #include <functional>
 #include "ZoneScheduler.h"
@@ -8,8 +8,8 @@ using Job = std::function<void()>;
 class Worker
 {
 public:
-	Worker(ZoneScheduler& _zone_scheduler)
-		: zone_scheduler(_zone_scheduler), worker_thread(&Worker::run, this)
+	Worker(ZoneScheduler& scheduler)
+		: zoneScheduler(scheduler), workerThread(&Worker::run, this)
 	{
 	}
 
@@ -20,37 +20,37 @@ public:
 	void run()
 	{
 		// worker: 
-		// zone scheduler¿¡¼­ ready queue¸¦ °¡Á®¿Â´Ù. 
-		// ready queue¿¡¼­ ½ºÄÉÁìÀÌ µÇÁö ¾ÊÀº zoneÀ» °¡Á®¿Â´Ù. 
-		// zoneÀÇ job_queue¿¡¼­ jobÀ» ¾ò¾î¿Í ½ÇÇàÇÑ´Ù.
+		// zone schedulerì—ì„œ ready queueë¥¼ ê°€ì ¸ì˜¨ë‹¤.
+		// ready queueì—ì„œ ìŠ¤ì¼€ì¥´ì´ ë˜ì§€ ì•Šì€ zoneì„ ê°€ì ¸ì˜¨ë‹¤.
+		// zoneì˜ jobQueueì—ì„œ jobì„ ì–»ì–´ì™€ ì‹¤í–‰í•œë‹¤.
 
-		auto& ready_queue = zone_scheduler.get_ready_queue();
+		auto& readyQueue = zoneScheduler.get_ready_queue();
 
 		while (true)
 		{
 			Zone* zone = nullptr;
 
-			if (ready_queue.pop(zone) == false)
+			if (readyQueue.pop(zone) == false)
 			{
 				break;
 			}
 
-			// zoneÀÇ ÀÛ¾÷µéÀ» ½ÇÇàÇÑ´Ù.
-			auto& job_queue = zone->get_job_queue();
+			// zoneì˜ ìž‘ì—…ë“¤ì„ ì‹¤í–‰í•œë‹¤.
+			auto& jobQueue = zone->get_job_queue();
 
 			Job job;
-			while (job_queue.try_pop(job) == true)
+			while (jobQueue.try_pop(job) == true)
 			{
 				job();
 			}
 
 			zone->set_scheduled(false);
 
-			if (job_queue.get_empty() == false)
+			if (jobQueue.get_empty() == false)
 			{
 				if (zone->set_scheduled(true) == true)
 				{
-					ready_queue.push(zone);
+					readyQueue.push(zone);
 				}
 			}
 		}
@@ -58,16 +58,16 @@ public:
 	
 	void join()
 	{
-		worker_thread.join();
+		workerThread.join();
 	}
 
 	void shut_down()
 	{
-		is_shut_down = true;
+		isShutDown = true;
 	}
 
 private:
-	ZoneScheduler& zone_scheduler;
-	std::thread worker_thread;
-	bool is_shut_down = false;
+	ZoneScheduler& zoneScheduler;
+	std::thread workerThread;
+	bool isShutDown = false;
 };

@@ -8,13 +8,13 @@
 class ThreadPool
 {
 public:
-    ThreadPool(size_t _num_workers, ZoneScheduler& _zonescheduler)
+    ThreadPool(size_t numWorkers, ZoneScheduler& scheduler)
     {
-		workers.reserve(_num_workers);
+		workers.reserve(numWorkers);
 
-        for (int i = 0; i < _num_workers; i++)
+        for (int i = 0; i < numWorkers; i++)
 		{
-            workers.emplace_back(std::make_unique<Worker>(_zonescheduler));
+            workers.emplace_back(std::make_unique<Worker>(scheduler));
 		}
     }
     ~ThreadPool()

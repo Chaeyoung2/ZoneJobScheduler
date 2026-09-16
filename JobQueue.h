@@ -11,7 +11,7 @@ public:
 	void shut_down()
 	{
 		std::unique_lock<std::mutex> lock(mutex);
-		is_shutdown = true;
+		isShutdown = true;
 		lock.unlock();
 
 		cv.notify_all();
@@ -19,7 +19,7 @@ public:
 	void push(const Job& job)
 	{
 		std::unique_lock<std::mutex> lock(mutex);
-		job_queue.push(job);
+		jobQueue.push(job);
 		cv.notify_one();
 	}
 	bool pop(Job& job)
@@ -29,16 +29,16 @@ public:
 		cv.wait(lock,
 			[this]
 			{
-				if (job_queue.empty() == false || is_shutdown == true)
+				if (jobQueue.empty() == false || isShutdown == true)
 					return true;
 				return false;
 			});
 
-		if (job_queue.empty())
+		if (jobQueue.empty())
 			return false;
 
-		job = job_queue.front();
-		job_queue.pop();
+		job = jobQueue.front();
+		jobQueue.pop();
 
 		return true;
 	}
@@ -47,13 +47,13 @@ public:
 	{
 		std::lock_guard<std::mutex> lock(mutex);
 
-		if (job_queue.empty())
+		if (jobQueue.empty())
 		{
 			return false;
 		}
 
-		job = job_queue.front();
-		job_queue.pop();
+		job = jobQueue.front();
+		jobQueue.pop();
 
 		return true;
 	}
@@ -61,12 +61,12 @@ public:
 	bool get_empty()
 	{
 		std::lock_guard<std::mutex> lock(mutex);
-		return job_queue.empty();
+		return jobQueue.empty();
 	}
 
 private:
 	std::mutex mutex;
 	std::condition_variable cv;
-	std::queue<Job> job_queue;
-	bool is_shutdown = false;
+	std::queue<Job> jobQueue;
+	bool isShutdown = false;
 };

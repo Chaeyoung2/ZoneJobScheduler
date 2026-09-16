@@ -14,7 +14,7 @@ public:
 	{
 		{
 			std::lock_guard<std::mutex> lock(mutex);
-			ready_queue.push(zone);
+			readyQueue.push(zone);
 		}
 
 		cv.notify_one();
@@ -25,28 +25,28 @@ public:
 		std::unique_lock<std::mutex> lock(mutex);
 
 		cv.wait(lock, [this] {
-			return (ready_queue.empty() == false || is_shut_down == true);
+			return (readyQueue.empty() == false || isShutDown == true);
 			});
 
-		if (ready_queue.empty() == true)
+		if (readyQueue.empty() == true)
 			return false;
 
-		zone = ready_queue.front();
-		ready_queue.pop();
+		zone = readyQueue.front();
+		readyQueue.pop();
 
 		return true;
 	}
 
 	bool get_shut_down()
 	{
-		return is_shut_down;
+		return isShutDown;
 	}
 
 	void shut_down()
 	{
 		{
 			std::lock_guard<std::mutex> lock(mutex);
-			is_shut_down = true;
+			isShutDown = true;
 		}
 		cv.notify_all();
 	}
@@ -59,7 +59,7 @@ public:
 	bool empty()
 	{
 		std::lock_guard<std::mutex> lock(mutex);
-		return ready_queue.empty();
+		return readyQueue.empty();
 	}
 
 	std::mutex& get_mutex()
@@ -70,6 +70,6 @@ public:
 private:
 	std::mutex mutex;
 	std::condition_variable cv;
-	std::queue<Zone*> ready_queue;
-	bool is_shut_down = false;
+	std::queue<Zone*> readyQueue;
+	bool isShutDown = false;
 };

@@ -6,8 +6,8 @@
 class Producer
 {
 public:
-	Producer(ZoneScheduler& _zone_scheduler, int _jobs_per_producer, int _zone_count, std::atomic<int>& _executed_job_count)
-		: zone_scheduler(_zone_scheduler), jobs_per_producer(_jobs_per_producer), zone_count(_zone_count), executed_job_count(_executed_job_count), producer_thread(&Producer::run, this)
+	Producer(ZoneScheduler& scheduler, int jobCount, int totalZoneCount, std::atomic<int>& executedCount)
+		: zoneScheduler(scheduler), jobsPerProducer(jobCount), zoneCount(totalZoneCount), executedJobCount(executedCount), producerThread(&Producer::run, this)
 	{
 	}
 
@@ -17,11 +17,11 @@ public:
 
 	void run()
 	{
-		for (int i = 0; i < zone_count; i++)
+		for (int i = 0; i < zoneCount; i++)
 		{
-			for (int k = 0; k < jobs_per_producer; k++)
+			for (int k = 0; k < jobsPerProducer; k++)
 			{
-				zone_scheduler.submit(i/*zone_id*/, make_job(i));
+				zoneScheduler.submit(i/*zoneId*/, make_job(i));
 			}
 		}
 		
@@ -29,22 +29,22 @@ public:
 
 	void join()
 	{
-		producer_thread.join();
+		producerThread.join();
 	}
 
-	Job make_job(int zone_id)
+	Job make_job(int zoneId)
 	{
-		return [&scheduler = zone_scheduler, &executed_count = executed_job_count, zone_id]()
+		return [&scheduler = zoneScheduler, &executedCount = executedJobCount, zoneId]()
 			{
-				scheduler.get_zone(zone_id)->take_damage_all(1);
-				executed_count.fetch_add(1, std::memory_order_relaxed);
+				scheduler.get_zone(zoneId)->take_damage_all(1);
+				executedCount.fetch_add(1, std::memory_order_relaxed);
 			};
 	}
 
 private:
-	ZoneScheduler& zone_scheduler;
-	int jobs_per_producer;
-	const int zone_count;
-	std::atomic<int>& executed_job_count;
-	std::thread producer_thread;
+	ZoneScheduler& zoneScheduler;
+	int jobsPerProducer;
+	const int zoneCount;
+	std::atomic<int>& executedJobCount;
+	std::thread producerThread;
 };

@@ -8,9 +8,9 @@ using Job = std::function<void()>;
 class Zone
 {
 public:
-	Zone(int _zone_id) : zone_id(_zone_id), is_scheduled(false) 
+	Zone(int id) : zoneId(id), isScheduled(false)
 	{
-		for(int i  =0; i < actor_count; i++)
+		for(int i  =0; i < actorCount; i++)
 			actors.emplace_back(Actor());
 	}
 
@@ -20,10 +20,10 @@ public:
 
 	bool submit(const Job& job) 
 	{
-		job_queue.push(job);
+		jobQueue.push(job);
 
 		bool expected = false;
-		if (is_scheduled.compare_exchange_strong(expected, true) == true)
+		if (isScheduled.compare_exchange_strong(expected, true) == true)
 		{
 			return true;
 		}
@@ -32,12 +32,12 @@ public:
 
 	JobQueue& get_job_queue()
 	{
-		return job_queue;
+		return jobQueue;
 	}
 
-	Actor& get_actor(int actor_idx)
+	Actor& get_actor(int actorIndex)
 	{
-		return actors[actor_idx];
+		return actors[actorIndex];
 	}
 
 	void take_damage_all(int damage)
@@ -48,18 +48,18 @@ public:
 		}
 	}
 
-	bool set_scheduled(bool _scheduled)
+	bool set_scheduled(bool scheduled)
 	{
-		bool expected = !_scheduled;
-		if (is_scheduled.compare_exchange_strong(expected, _scheduled) == false)
+		bool expected = !scheduled;
+		if (isScheduled.compare_exchange_strong(expected, scheduled) == false)
 			return false;
 		return true;
 	}
 
 private:
-	const int zone_id;
-	std::atomic<bool> is_scheduled;
-	JobQueue job_queue;
+	const int zoneId;
+	std::atomic<bool> isScheduled;
+	JobQueue jobQueue;
 	std::vector<Actor> actors;
-	int actor_count = 100;
+	int actorCount = 100;
 };

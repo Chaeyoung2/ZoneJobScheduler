@@ -1,4 +1,4 @@
-#include "ZoneScheduler.h"
+ï»¿#include "ZoneScheduler.h"
 #include "ThreadPool.h"
 #include "Actor.h"
 #include "Producer.h"
@@ -11,30 +11,30 @@
 
 int main()
 {
-	const int zone_count = 4;
-	const int worker_thread_count = 8;
-	const int producer_thread_count = 4;
-	const int jobs_per_producer = 1000;
-	const int actor_count = 100;
-	const int expected_job_count = producer_thread_count * zone_count * jobs_per_producer;
+	const int zoneCount = 4;
+	const int workerThreadCount = 8;
+	const int producerThreadCount = 4;
+	const int jobsPerProducer = 1000;
+	const int actorCount = 100;
+	const int expectedJobCount = producerThreadCount * zoneCount * jobsPerProducer;
 
-	std::atomic<int> executed_job_count = 0;
+	std::atomic<int> executedJobCount = 0;
 
-	// zone scheduler¸¦ ¸¸µç´Ù.
-	ZoneScheduler scheduler(zone_count);
+	// zone schedulerë¥¼ ë§Œë“ ë‹¤.
+	ZoneScheduler scheduler(zoneCount);
 
-	// thread poolÀ» ¸¸µç´Ù.
-	ThreadPool pool(worker_thread_count, scheduler);
+	// thread poolì„ ë§Œë“ ë‹¤.
+	ThreadPool pool(workerThreadCount, scheduler);
 
-	// producer thread¸¦ ¸¸µç´Ù.
-	// // thread´Â º¹»çÇÒ ¼ö ¾øÀ¸¹Ç·Î producer °´Ã¼¸¦ vector ¾È¿¡ Á÷Á¢ ÀúÀåÇÏÁö ¸»°í, 
-	// // ÁÖ¼Ò°¡ ¾ÈÁ¤ÀûÀÎ º°µµ °´Ã¼·Î »ı¼ºÇÏ¿© unique_ptrÀ» ÀúÀåÇÏ´Â ¹æÇâÀÌ ÀûÀıÇÏ´Ù. (vector°¡ ÀçÇÒ´çµÇ´õ¶óµµ ÀÌµ¿ÇÏ´Â °ÍÀº unique_ptrÀÓ)
+	// producer threadë¥¼ ë§Œë“ ë‹¤.
+	// // threadëŠ” ë³µì‚¬í•  ìˆ˜ ì—†ìœ¼ë¯€ë¡œ producer ê°ì²´ë¥¼ vector ì•ˆì— ì§ì ‘ ì €ì¥í•˜ì§€ ë§ê³ ,
+	// // ì£¼ì†Œê°€ ì•ˆì •ì ì¸ ë³„ë„ ê°ì²´ë¡œ ìƒì„±í•˜ì—¬ unique_ptrì„ ì €ì¥í•˜ëŠ” ë°©í–¥ì´ ì ì ˆí•˜ë‹¤. (vectorê°€ ì¬í• ë‹¹ë˜ë”ë¼ë„ ì´ë™í•˜ëŠ” ê²ƒì€ unique_ptrì„)
 	std::vector<std::unique_ptr<Producer>> producers;
 
-	for (int i = 0; i < producer_thread_count; i++)
+	for (int i = 0; i < producerThreadCount; i++)
 	{
 		producers.emplace_back(
-			std::make_unique<Producer>(scheduler, jobs_per_producer, zone_count, executed_job_count));
+			std::make_unique<Producer>(scheduler, jobsPerProducer, zoneCount, executedJobCount));
 	}
 
 	for (auto& p : producers)
@@ -44,10 +44,10 @@ int main()
 
 	pool.join();
 
-	const int actual_job_count = executed_job_count.load(std::memory_order_relaxed);
+	const int actualJobCount = executedJobCount.load(std::memory_order_relaxed);
 
-	std::cout << "Expected jobs: " << expected_job_count << '\n'
-		<< "Executed jobs: " << actual_job_count << '\n';
+	std::cout << "Expected jobs: " << expectedJobCount << '\n'
+		<< "Executed jobs: " << actualJobCount << '\n';
 
-	assert(actual_job_count == expected_job_count);
+	assert(actualJobCount == expectedJobCount);
 }

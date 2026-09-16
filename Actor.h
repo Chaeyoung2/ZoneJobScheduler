@@ -4,8 +4,8 @@ class Actor
 {
 public:
     Actor() {}
-    Actor(int _max_hp, int _hp)
-    : max_hp(_max_hp), hp(_hp) {}
+    Actor(int initialMaxHp, int initialHp)
+    : maxHp(initialMaxHp), hp(initialHp) {}
 
     void take_damage(unsigned int damage)
     {
@@ -21,7 +21,7 @@ public:
     }
     
 private:
-    int max_hp = 100;
+    int maxHp = 100;
     int hp = 100;
 };
 
