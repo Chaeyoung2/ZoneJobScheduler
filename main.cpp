@@ -16,6 +16,9 @@ int main()
 	const int producer_thread_count = 4;
 	const int jobs_per_producer = 1000;
 	const int actor_count = 100;
+	const int expected_job_count = producer_thread_count * zone_count * jobs_per_producer;
+
+	std::atomic<int> executed_job_count = 0;
 
 	// zone scheduler를 만든다.
 	ZoneScheduler scheduler(zone_count);
@@ -31,7 +34,7 @@ int main()
 	for (int i = 0; i < producer_thread_count; i++)
 	{
 		producers.emplace_back(
-			std::make_unique<Producer>(scheduler, jobs_per_producer, zone_count));
+			std::make_unique<Producer>(scheduler, jobs_per_producer, zone_count, executed_job_count));
 	}
 
 	for (auto& p : producers)
@@ -40,4 +43,11 @@ int main()
 	scheduler.shut_down();
 
 	pool.join();
+
+	const int actual_job_count = executed_job_count.load(std::memory_order_relaxed);
+
+	std::cout << "Expected jobs: " << expected_job_count << '\n'
+		<< "Executed jobs: " << actual_job_count << '\n';
+
+	assert(actual_job_count == expected_job_count);
 }

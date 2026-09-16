@@ -1,12 +1,13 @@
 #pragma once
 #include <thread>
+#include <atomic>
 #include "ZoneScheduler.h"
 
 class Producer
 {
 public:
-	Producer(ZoneScheduler& _zone_scheduler, int _jobs_per_producer, int _zone_count) 
-		: zone_scheduler(_zone_scheduler), jobs_per_producer(_jobs_per_producer), zone_count(_zone_count), producer_thread(&Producer::run, this)
+	Producer(ZoneScheduler& _zone_scheduler, int _jobs_per_producer, int _zone_count, std::atomic<int>& _executed_job_count)
+		: zone_scheduler(_zone_scheduler), jobs_per_producer(_jobs_per_producer), zone_count(_zone_count), executed_job_count(_executed_job_count), producer_thread(&Producer::run, this)
 	{
 	}
 
@@ -33,15 +34,17 @@ public:
 
 	Job make_job(int zone_id)
 	{
-		return [&scheduler = zone_scheduler, zone_id]()
+		return [&scheduler = zone_scheduler, &executed_count = executed_job_count, zone_id]()
 			{
 				scheduler.get_zone(zone_id)->take_damage_all(1);
+				executed_count.fetch_add(1, std::memory_order_relaxed);
 			};
 	}
 
 private:
-	std::thread producer_thread;
 	ZoneScheduler& zone_scheduler;
-	const int zone_count;
 	int jobs_per_producer;
+	const int zone_count;
+	std::atomic<int>& executed_job_count;
+	std::thread producer_thread;
 };

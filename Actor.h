@@ -22,7 +22,7 @@ public:
     
 private:
     int max_hp = 100;
-    int hp;
+    int hp = 100;
 };
 
 
