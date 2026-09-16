@@ -1,5 +1,19 @@
 cmake_minimum_required(VERSION 3.20)
-project(ZoneJobScheduler CXX)
+
+project(ZoneJobScheduler LANGUAGES CXX)
+
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-add_executable(ZoneJobScheduler main.cpp "JobQueue.h" "ZoneScheduler.h" "Zone.h" "Worker.h" "Producer.h")
+set(CMAKE_CXX_EXTENSIONS OFF)
+
+add_executable(ZoneJobScheduler
+	main.cpp
+	Actor.cpp
+	JobQueue.cpp
+	ReadyQueue.cpp
+	Zone.cpp
+	ZoneScheduler.cpp
+	Worker.cpp
+	ThreadPool.cpp
+	Producer.cpp
+)

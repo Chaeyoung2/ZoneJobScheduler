@@ -1,4 +1,5 @@
 ﻿#include "ZoneScheduler.h"
+#include "Zone.h"
 #include "ThreadPool.h"
 #include "Producer.h"
 

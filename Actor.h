@@ -3,22 +3,11 @@
 class Actor
 {
 public:
-    Actor() {}
-    Actor(int initialMaxHp, int initialHp)
-    : maxHp(initialMaxHp), hp(initialHp) {}
+    Actor();
+    Actor(int initialMaxHp, int initialHp);
 
-    void takeDamage(unsigned int damage)
-    {
-        if(damage > hp)
-            hp = 0;
-        else
-            hp -= damage;
-    }
-
-    int getHp()
-    {
-        return hp;
-    }
+    void takeDamage(unsigned int damage);
+    int getHp();
     
 private:
     int maxHp = 100;

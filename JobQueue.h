@@ -1,68 +1,19 @@
 #pragma once
-#include <queue>
-#include <mutex>
-#include <condition_variable>
-#include <functional>
 
-using Job = std::function<void()>;
+#include "Job.h"
+
+#include <condition_variable>
+#include <mutex>
+#include <queue>
+
 class JobQueue 
 {
 public:
-	void shutDown()
-	{
-		std::unique_lock<std::mutex> lock(mutex);
-		isShutdown = true;
-		lock.unlock();
-
-		cv.notify_all();
-	}
-	void push(const Job& job)
-	{
-		std::unique_lock<std::mutex> lock(mutex);
-		jobQueue.push(job);
-		cv.notify_one();
-	}
-	bool pop(Job& job)
-	{
-		std::unique_lock<std::mutex> lock(mutex);
-
-		cv.wait(lock,
-			[this]
-			{
-				if (jobQueue.empty() == false || isShutdown == true)
-					return true;
-				return false;
-			});
-
-		if (jobQueue.empty())
-			return false;
-
-		job = jobQueue.front();
-		jobQueue.pop();
-
-		return true;
-	}
-
-	bool tryPop(Job& job)
-	{
-		std::lock_guard<std::mutex> lock(mutex);
-
-		if (jobQueue.empty())
-		{
-			return false;
-		}
-
-		job = jobQueue.front();
-		jobQueue.pop();
-
-		return true;
-	}
-
-	bool getEmpty()
-	{
-		std::lock_guard<std::mutex> lock(mutex);
-		return jobQueue.empty();
-	}
+	void shutDown();
+	void push(const Job& job);
+	bool pop(Job& job);
+	bool tryPop(Job& job);
+	bool getEmpty();
 
 private:
 	std::mutex mutex;
