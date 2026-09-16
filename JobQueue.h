@@ -8,7 +8,7 @@ using Job = std::function<void()>;
 class JobQueue 
 {
 public:
-	void shut_down()
+	void shutDown()
 	{
 		std::unique_lock<std::mutex> lock(mutex);
 		isShutdown = true;
@@ -43,7 +43,7 @@ public:
 		return true;
 	}
 
-	bool try_pop(Job& job)
+	bool tryPop(Job& job)
 	{
 		std::lock_guard<std::mutex> lock(mutex);
 
@@ -58,7 +58,7 @@ public:
 		return true;
 	}
 
-	bool get_empty()
+	bool getEmpty()
 	{
 		std::lock_guard<std::mutex> lock(mutex);
 		return jobQueue.empty();

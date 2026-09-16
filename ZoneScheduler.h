@@ -27,19 +27,19 @@ public:
 		return true;
 	}
 
-	Zone* get_zone(int zoneId)
+	Zone* getZone(int zoneId)
 	{
 		return zones[zoneId].get();
 	}
 
-	ReadyQueue& get_ready_queue()
+	ReadyQueue& getReadyQueue()
 	{
 		return readyQueue;
 	}
 
-	void shut_down()
+	void shutDown()
 	{
-		readyQueue.shut_down();
+		readyQueue.shutDown();
 	}
 
 private:

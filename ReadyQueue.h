@@ -37,34 +37,13 @@ public:
 		return true;
 	}
 
-	bool get_shut_down()
-	{
-		return isShutDown;
-	}
-
-	void shut_down()
+	void shutDown()
 	{
 		{
 			std::lock_guard<std::mutex> lock(mutex);
 			isShutDown = true;
 		}
 		cv.notify_all();
-	}
-
-	std::condition_variable& get_condition_variable()
-	{
-		return cv;
-	}
-
-	bool empty()
-	{
-		std::lock_guard<std::mutex> lock(mutex);
-		return readyQueue.empty();
-	}
-
-	std::mutex& get_mutex()
-	{
-		return mutex;
 	}
 
 private:

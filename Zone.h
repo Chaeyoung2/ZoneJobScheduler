@@ -30,25 +30,25 @@ public:
 		return false;
 	}
 
-	JobQueue& get_job_queue()
+	JobQueue& getJobQueue()
 	{
 		return jobQueue;
 	}
 
-	Actor& get_actor(int actorIndex)
+	Actor& getActor(int actorIndex)
 	{
 		return actors[actorIndex];
 	}
 
-	void take_damage_all(int damage)
+	void takeDamageAll(int damage)
 	{
 		for (auto& actor : actors)
 		{
-			actor.take_damage(damage);
+			actor.takeDamage(damage);
 		}
 	}
 
-	bool set_scheduled(bool scheduled)
+	bool setScheduled(bool scheduled)
 	{
 		bool expected = !scheduled;
 		if (isScheduled.compare_exchange_strong(expected, scheduled) == false)

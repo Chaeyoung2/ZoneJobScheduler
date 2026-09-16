@@ -39,7 +39,7 @@ int main()
 
 					std::this_thread::yield();
 
-					scheduler.get_zone(zoneId)->take_damage_all(1);
+					scheduler.getZone(zoneId)->takeDamageAll(1);
 
 					activeJobCounts[zoneId].fetch_sub(1, std::memory_order_relaxed);
 
@@ -64,7 +64,7 @@ int main()
 		producer->join();
 	}
 
-	scheduler.shut_down();
+	scheduler.shutDown();
 	threadPool.join();
 
 	const int actualJobCount = executedJobCount.load(std::memory_order_relaxed);
