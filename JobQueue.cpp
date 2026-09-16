@@ -51,7 +51,7 @@ bool JobQueue::tryPop(Job& job)
 	return true;
 }
 
-bool JobQueue::getEmpty()
+bool JobQueue::getEmpty() const
 {
 	std::lock_guard<std::mutex> lock(m_mutex);
 	return m_jobQueue.empty();

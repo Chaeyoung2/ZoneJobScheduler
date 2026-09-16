@@ -24,5 +24,5 @@ private:
 	std::atomic<bool> m_isScheduled;
 	JobQueue m_jobQueue;
 	std::vector<Actor> m_actors;
-	int m_actorCount = 100;
+	static constexpr int m_actorCount = 100;
 };

@@ -13,10 +13,10 @@ public:
 	void push(const Job& job);
 	bool pop(Job& job);
 	bool tryPop(Job& job);
-	bool getEmpty();
+	bool getEmpty() const;
 
 private:
-	std::mutex m_mutex;
+	mutable std::mutex m_mutex;
 	std::condition_variable m_cv;
 	std::queue<Job> m_jobQueue;
 	bool m_isShutdown = false;

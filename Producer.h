@@ -25,8 +25,8 @@ public:
 
 private:
 	ZoneScheduler& m_zoneScheduler;
-	int m_jobsPerProducer;
+	const int m_jobsPerProducer;
 	const int m_zoneCount;
-	JobFactory m_jobFactory;
+	const JobFactory m_jobFactory;
 	std::thread m_producerThread;
 };

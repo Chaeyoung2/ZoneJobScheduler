@@ -19,7 +19,7 @@ void Actor::takeDamage(unsigned int damage)
     m_hp -= damage;
 }
 
-int Actor::getHp()
+int Actor::getHp() const
 {
     return m_hp;
 }
