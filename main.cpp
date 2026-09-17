@@ -87,4 +87,48 @@ int main()
 	{
 		assert(activeJobCount.load(std::memory_order_relaxed) == 0);
 	}
+
+	// FIFO 검증
+	{
+		constexpr int orderedJobCount = 1000;
+
+		ZoneScheduler orderScheduler(1);
+		ThreadPool orderThreadPool(4, orderScheduler);
+
+		std::vector<int> executionOrder(orderedJobCount, -1);
+
+		std::atomic<int> executionIndex = 0;
+
+		for (int jobSequence = 0; jobSequence < orderedJobCount; ++jobSequence)
+		{
+			orderScheduler.submit(0, [&, jobSequence]()
+				{
+					const int index = executionIndex.fetch_add(1, std::memory_order_relaxed);
+					executionOrder[index] = jobSequence;
+				});
+		}
+
+		orderScheduler.shutDown();
+		orderThreadPool.join();
+
+		bool wasOrderPreserved = true;
+
+		for (int expectedSequence = 0; expectedSequence < orderedJobCount; ++expectedSequence)
+		{
+			if (executionOrder[expectedSequence] != expectedSequence)
+			{
+				wasOrderPreserved = false;
+				break;
+			}
+		}
+
+		std::cout
+			<< "Same-zone FIFO preserved: "
+			<< std::boolalpha
+			<< wasOrderPreserved
+			<< '\n';
+
+		assert(executionIndex.load(std::memory_order_relaxed) == orderedJobCount);
+		assert(wasOrderPreserved);
+	}
 }
