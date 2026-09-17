@@ -20,14 +20,15 @@ void Worker::run()
 
 	while (true)
 	{
-		Zone* zone = nullptr;
+		auto nextZone = readyQueue.pop();
 
-		if (readyQueue.pop(zone) == false)
+		if (nextZone.has_value() == false)
 		{
 			break;
 		}
 
-		JobQueue& jobQueue = zone->getJobQueue();
+		Zone& zone = nextZone->get();
+		JobQueue& jobQueue = zone.getJobQueue();
 
 		Job job;
 		while (jobQueue.tryPop(job))
@@ -35,11 +36,11 @@ void Worker::run()
 			job();
 		}
 
-		zone->setScheduled(false);
+		zone.setScheduled(false);
 
 		if (jobQueue.getEmpty() == false)
 		{
-			if (zone->setScheduled(true))
+			if (zone.setScheduled(true))
 			{
 				readyQueue.push(zone);
 			}

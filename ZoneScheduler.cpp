@@ -19,14 +19,14 @@ bool ZoneScheduler::submit(int zoneId, const Job& job)
 		return false;
 	}
 
-	m_readyQueue.push(m_zones[zoneId].get());
+	m_readyQueue.push(*m_zones[zoneId]);
 
 	return true;
 }
 
-Zone* ZoneScheduler::getZone(int zoneId)
+Zone& ZoneScheduler::getZone(int zoneId)
 {
-	return m_zones[zoneId].get();
+	return *m_zones[zoneId];
 }
 
 ReadyQueue& ZoneScheduler::getReadyQueue()

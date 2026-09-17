@@ -40,7 +40,7 @@ int main()
 
 					std::this_thread::yield();
 
-					scheduler.getZone(zoneId)->takeDamageAll(1);
+					scheduler.getZone(zoneId).takeDamageAll(1);
 
 					activeJobCounts[zoneId].fetch_sub(1, std::memory_order_relaxed);
 

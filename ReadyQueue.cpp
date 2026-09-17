@@ -1,16 +1,16 @@
 #include "ReadyQueue.h"
 
-void ReadyQueue::push(Zone* zone)
+void ReadyQueue::push(Zone& zone)
 {
 	{
 		std::lock_guard<std::mutex> lock(m_mutex);
-		m_readyQueue.push(zone);
+		m_readyQueue.push(std::ref(zone));
 	}
 
 	m_cv.notify_one();
 }
 
-bool ReadyQueue::pop(Zone*& zone)
+std::optional<std::reference_wrapper<Zone>> ReadyQueue::pop()
 {
 	std::unique_lock<std::mutex> lock(m_mutex);
 
@@ -21,13 +21,13 @@ bool ReadyQueue::pop(Zone*& zone)
 
 	if (m_readyQueue.empty())
 	{
-		return false;
+		return std::nullopt;
 	}
 
-	zone = m_readyQueue.front();
+	std::reference_wrapper<Zone> zone = m_readyQueue.front();
 	m_readyQueue.pop();
 
-	return true;
+	return zone;
 }
 
 void ReadyQueue::shutDown()
