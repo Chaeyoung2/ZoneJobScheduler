@@ -52,8 +52,3 @@ void Worker::join()
 {
 	m_workerThread.join();
 }
-
-void Worker::shutDown()
-{
-	m_isShutDown = true;
-}

@@ -12,16 +12,12 @@ ZoneScheduler::ZoneScheduler(int zoneCount)
 
 ZoneScheduler::~ZoneScheduler() = default;
 
-bool ZoneScheduler::submit(int zoneId, const Job& job)
+void ZoneScheduler::submit(int zoneId, const Job& job)
 {
-	if (m_zones[zoneId]->submit(job) == false)
+	if (m_zones[zoneId]->submit(job))
 	{
-		return false;
+		m_readyQueue.push(*m_zones[zoneId]);
 	}
-
-	m_readyQueue.push(*m_zones[zoneId]);
-
-	return true;
 }
 
 Zone& ZoneScheduler::getZone(int zoneId)

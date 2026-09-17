@@ -13,7 +13,7 @@ public:
 	ZoneScheduler(int zoneCount);
 	~ZoneScheduler();
 
-	bool submit(int zoneId, const Job& job);
+	void submit(int zoneId, const Job& job);
 	Zone& getZone(int zoneId);
 	ReadyQueue& getReadyQueue();
 	void shutDown();
