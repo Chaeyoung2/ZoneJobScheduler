@@ -34,6 +34,7 @@ x86/
 *.ilk
 
 # CMake
+/CMakeLists.txt
 CMakeFiles/
 CMakeCache.txt
 cmake_install.cmake
