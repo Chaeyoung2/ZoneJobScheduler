@@ -6,7 +6,7 @@ public:
     Actor();
     Actor(int initialMaxHp, int initialHp);
 
-    void takeDamage(unsigned int damage);
+    void takeDamage(int damage);
     int getHp() const;
     
 private:
