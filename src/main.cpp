@@ -11,6 +11,8 @@
 #include <memory>
 #include <thread>
 #include <vector>
+#include <condition_variable>
+#include <mutex>
 
 
 bool runJobExecutionTest();
@@ -184,47 +186,61 @@ bool runSameZoneFifoTest()
 
 bool runDifferentZoneParallelismTest()
 {
-	constexpr int parallelZoneCount = 2;
-	constexpr int parallelWorkerCount = 2;
-	constexpr auto jobDuration = std::chrono::milliseconds(100);
+	constexpr int zoneCount = 2;
+	constexpr int workerCount = 2;
+	constexpr int expectedReadyJobCount = 2;
+	constexpr auto synchronizationTimeout = std::chrono::seconds(1);
 
-	ZoneScheduler parallelScheduler(parallelZoneCount);
-	ThreadPool parallelThreadPool(parallelWorkerCount, parallelScheduler);
+	ZoneScheduler scheduler(zoneCount);
+	ThreadPool threadPool(workerCount, scheduler);
 
-	std::atomic<int> activeJobCount = 0;
-	std::atomic<bool> differentZoneOverlapDetected = false;
+	std::mutex gateMutex;
+	std::condition_variable gateCv;
+
+	int readyJobCount = 0;
+	bool releaseJobs = false;
 
 	Job parallelJob = [&](Zone&)
 		{
-			const int previousActiveJobCount = activeJobCount.fetch_add(1, std::memory_order_relaxed);
+			std::unique_lock<std::mutex> lock(gateMutex);
 
-			if (previousActiveJobCount > 0)
-			{
-				differentZoneOverlapDetected.store(true, std::memory_order_relaxed);
-			}
+			++readyJobCount;
+			gateCv.notify_all();
 
-			std::this_thread::sleep_for(jobDuration);
-
-			activeJobCount.fetch_sub(1, std::memory_order_relaxed);
+			gateCv.wait(lock, [&]()
+				{
+					return releaseJobs;
+				});
 		};
 
-	parallelScheduler.submit(0, parallelJob);
-	parallelScheduler.submit(1, parallelJob);
+	scheduler.submit(0, parallelJob);
+	scheduler.submit(1, parallelJob);
 
-	parallelScheduler.shutDown();
-	parallelThreadPool.join();
+	bool didBothJobsReachGate = false;
 
+	{
+		std::unique_lock<std::mutex> lock(gateMutex);
 
-	const bool wasDifferentZoneOverlapDetected = differentZoneOverlapDetected.load(std::memory_order_relaxed);
+		didBothJobsReachGate = gateCv.wait_for(lock, synchronizationTimeout, [&]()
+			{
+				return readyJobCount == expectedReadyJobCount;
+			});
+
+		releaseJobs = true;
+	}
+
+	gateCv.notify_all();
+
+	scheduler.shutDown();
+	threadPool.join();
 
 	std::cout
 		<< "Different-zone overlap detected: "
 		<< std::boolalpha
-		<< wasDifferentZoneOverlapDetected
+		<< didBothJobsReachGate
 		<< '\n';
 
-	return activeJobCount.load(std::memory_order_relaxed) == 0
-		&& wasDifferentZoneOverlapDetected;
+	return didBothJobsReachGate;
 }
 
 bool runConcurrentShutdownTest()
