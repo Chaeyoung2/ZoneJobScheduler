@@ -7,7 +7,8 @@ public:
     Actor(int initialMaxHp, int initialHp);
 
     void takeDamage(int damage);
-    
+    int getHp() const;
+
 private:
     const int m_maxHp = 100;
     int m_hp = 100;

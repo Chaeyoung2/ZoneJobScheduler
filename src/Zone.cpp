@@ -46,3 +46,15 @@ void Zone::markUnscheduled()
 {
 	m_isScheduled.store(false);
 }
+
+bool Zone::allActorsHaveHp(int expectedHp) const
+{
+	for (const auto& actor : m_actors)
+	{
+		if (actor.getHp() != expectedHp)
+		{
+			return false;
+		}
+	}
+	return true;
+}

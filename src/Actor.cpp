@@ -25,3 +25,8 @@ void Actor::takeDamage(int damage)
 
     m_hp -= damage;
 }
+
+int Actor::getHp() const
+{
+    return m_hp;
+}

@@ -18,6 +18,7 @@ public:
 	void takeDamageAll(int damage);
 	bool trySchedule();
 	void markUnscheduled();
+	bool allActorsHaveHp(int expectedHp) const;
 
 private:
 	std::atomic<bool> m_isScheduled;

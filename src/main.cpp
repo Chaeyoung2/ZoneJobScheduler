@@ -103,6 +103,40 @@ bool runJobExecutionTest()
 		&& allJobCountsReturnedToZero;
 }
 
+bool runActorStateTest()
+{
+	constexpr int damageJobCount = 25;
+	constexpr int expectedHp = 75;
+	constexpr int zoneCount = 1;
+	constexpr size_t workerCount = 2;
+	constexpr int damageAmount = 1;
+
+	ZoneScheduler scheduler(zoneCount);
+	ThreadPool threadPool(workerCount, scheduler);
+
+	for (int i = 0; i < damageJobCount; ++i)
+	{
+		scheduler.submit(0, [&scheduler]()
+			{
+				scheduler.getZone(0).takeDamageAll(damageAmount);
+			});
+	}
+
+	scheduler.shutDown();
+	threadPool.join();
+
+	const bool allActorsHaveExpectedHp = 
+		scheduler.getZone(0).allActorsHaveHp(expectedHp);
+
+	std::cout
+		<< "All actors have expected HP: "
+		<< std::boolalpha
+		<< allActorsHaveExpectedHp
+		<< '\n';
+
+	return allActorsHaveExpectedHp;
+}
+
 bool runSameZoneFifoTest()
 {
 	constexpr int orderedJobCount = 1000;
@@ -196,10 +230,12 @@ bool runDifferentZoneParallelismTest()
 int main()
 {
 	const bool jobExecutionPassed = runJobExecutionTest();
+	const bool actorStatePassed = runActorStateTest();
 	const bool fifoPassed = runSameZoneFifoTest();
 	const bool parallelExecutionPassed = runDifferentZoneParallelismTest();
 
 	return jobExecutionPassed &&
+		actorStatePassed &&
 		fifoPassed &&
 		parallelExecutionPassed
 		? EXIT_SUCCESS
