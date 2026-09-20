@@ -5,6 +5,7 @@
 #include <memory>
 #include <vector>
 #include <shared_mutex>
+#include <stdexcept>
 
 class Worker;
 class Zone;
@@ -12,7 +13,7 @@ class Zone;
 class ZoneScheduler 
 {
 public:
-	ZoneScheduler(int zoneCount);
+	explicit ZoneScheduler(int zoneCount);
 	~ZoneScheduler();
 
 	bool submit(int zoneId, const Job& job);

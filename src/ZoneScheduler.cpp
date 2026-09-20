@@ -6,6 +6,13 @@
 
 ZoneScheduler::ZoneScheduler(int zoneCount)
 {
+	if (zoneCount <= 0)
+	{
+		throw std::invalid_argument("zoneCount must be greater than zero");
+	}
+
+	m_zones.reserve(static_cast<std::size_t>(zoneCount));
+
 	for (int zoneId = 0; zoneId < zoneCount; ++zoneId)
 	{
 		m_zones.push_back(std::make_unique<Zone>());
@@ -23,7 +30,7 @@ bool ZoneScheduler::submit(int zoneId, const Job& job)
 		return false;
 	}
 
-	Zone& zone = *m_zones[zoneId];
+	Zone& zone = *m_zones.at(static_cast<std::size_t>(zoneId));
 
 	if (zone.submit(job))
 	{
@@ -35,7 +42,7 @@ bool ZoneScheduler::submit(int zoneId, const Job& job)
 
 const Zone& ZoneScheduler::getZone(int zoneId) const
 {
-	return *m_zones[zoneId];
+	return *m_zones.at(static_cast<std::size_t>(zoneId));
 }
 
 ReadyQueue& ZoneScheduler::getReadyQueue()

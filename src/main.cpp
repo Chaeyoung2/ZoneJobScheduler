@@ -110,7 +110,7 @@ bool runActorStateTest()
 	constexpr int damageJobCount = 25;
 	constexpr int expectedHp = 75;
 	constexpr int zoneCount = 1;
-	constexpr size_t workerCount = 2;
+	constexpr std::size_t workerCount = 2;
 	constexpr int damageAmount = 1;
 
 	ZoneScheduler scheduler(zoneCount);
@@ -259,7 +259,7 @@ bool runConcurrentShutdownTest()
 
 	Job job = [&](Zone&)
 		{
-			executedJobCount.fetch_add(	1, std::memory_order_relaxed);
+			executedJobCount.fetch_add(1, std::memory_order_relaxed);
 		};
 
 	for (int i = 0; i < initialJobCount; ++i)
