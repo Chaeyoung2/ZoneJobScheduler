@@ -1,23 +1,18 @@
-﻿#include "ZoneScheduler.h"
-#include "Zone.h"
+﻿#include "Producer.h"
 #include "ThreadPool.h"
-#include "Producer.h"
+#include "Zone.h"
+#include "ZoneScheduler.h"
 
 #include <array>
 #include <atomic>
 #include <chrono>
+#include <condition_variable>
 #include <cstdlib>
 #include <iostream>
 #include <memory>
+#include <mutex>
 #include <thread>
 #include <vector>
-#include <condition_variable>
-#include <mutex>
-
-
-bool runJobExecutionTest();
-bool runSameZoneFifoTest();
-bool runDifferentZoneParallelismTest();
 
 bool runJobExecutionTest()
 {
