@@ -1,5 +1,7 @@
 #include "Zone.h"
 
+#include <algorithm>
+
 Zone::Zone()
 	: m_isScheduled(false)
 {
@@ -49,12 +51,10 @@ void Zone::markUnscheduled()
 
 bool Zone::allActorsHaveHp(int expectedHp) const
 {
-	for (const auto& actor : m_actors)
-	{
-		if (actor.getHp() != expectedHp)
+	return std::ranges::all_of(
+		m_actors,
+		[expectedHp](const Actor& actor)
 		{
-			return false;
-		}
-	}
-	return true;
+			return actor.getHp() == expectedHp;
+		});
 }
