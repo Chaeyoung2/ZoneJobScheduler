@@ -12,7 +12,10 @@ Worker::Worker(ZoneScheduler& scheduler)
 {
 }
 
-Worker::~Worker() = default;
+Worker::~Worker()
+{
+	join();
+}
 
 void Worker::run()
 {
@@ -50,5 +53,8 @@ void Worker::run()
 
 void Worker::join()
 {
-	m_workerThread.join();
+	if (m_workerThread.joinable())
+	{
+		m_workerThread.join();
+	}
 }

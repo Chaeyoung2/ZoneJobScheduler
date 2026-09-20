@@ -15,5 +15,6 @@ public:
 	void join();
 
 private:
+	ZoneScheduler& m_zoneScheduler;
 	std::vector<std::unique_ptr<Worker>> m_workers;
 };

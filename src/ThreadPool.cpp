@@ -6,6 +6,7 @@
 ThreadPool::ThreadPool(
 	std::size_t numWorkers,
 	ZoneScheduler& scheduler)
+	: m_zoneScheduler(scheduler)
 {
 	m_workers.reserve(numWorkers);
 
@@ -15,7 +16,11 @@ ThreadPool::ThreadPool(
 	}
 }
 
-ThreadPool::~ThreadPool() = default;
+ThreadPool::~ThreadPool()
+{
+	m_zoneScheduler.shutDown();
+	join();
+}
 
 void ThreadPool::join()
 {

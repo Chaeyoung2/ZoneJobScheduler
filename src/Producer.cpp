@@ -10,14 +10,17 @@ Producer::Producer(
 	int totalZoneCount,
 	JobFactory factory)
 	: m_zoneScheduler(scheduler),
-	  m_jobsPerProducer(jobCount),
-	  m_zoneCount(totalZoneCount),
-	  m_jobFactory(std::move(factory)),
-	  m_producerThread(&Producer::run, this)
+	m_jobsPerProducer(jobCount),
+	m_zoneCount(totalZoneCount),
+	m_jobFactory(std::move(factory)),
+	m_producerThread(&Producer::run, this)
 {
 }
 
-Producer::~Producer() = default;
+Producer::~Producer()
+{
+	join();
+}
 
 void Producer::run()
 {
@@ -35,5 +38,8 @@ void Producer::run()
 
 void Producer::join()
 {
-	m_producerThread.join();
+	if (m_producerThread.joinable())
+	{
+		m_producerThread.join();
+	}
 }
