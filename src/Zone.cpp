@@ -1,8 +1,7 @@
 #include "Zone.h"
 
-Zone::Zone(int id)
-	: m_zoneId(id),
-	  m_isScheduled(false)
+Zone::Zone()
+	: m_isScheduled(false)
 {
 	for (int i = 0; i < m_actorCount; ++i)
 	{
@@ -16,23 +15,12 @@ bool Zone::submit(const Job& job)
 {
 	m_jobQueue.push(job);
 
-	bool expected = false;
-	if (m_isScheduled.compare_exchange_strong(expected, true))
-	{
-		return true;
-	}
-
-	return false;
+	return trySchedule();
 }
 
 JobQueue& Zone::getJobQueue()
 {
 	return m_jobQueue;
-}
-
-Actor& Zone::getActor(int actorIndex)
-{
-	return m_actors[actorIndex];
 }
 
 void Zone::takeDamageAll(int damage)
@@ -43,13 +31,18 @@ void Zone::takeDamageAll(int damage)
 	}
 }
 
-bool Zone::setScheduled(bool scheduled)
+bool Zone::trySchedule()
 {
-	bool expected = !scheduled;
-	if (m_isScheduled.compare_exchange_strong(expected, scheduled) == false)
+	bool expected = false;
+	if (m_isScheduled.compare_exchange_strong(expected, true) == false)
 	{
 		return false;
 	}
 
 	return true;
+}
+
+void Zone::markUnscheduled()
+{
+	m_isScheduled.store(false);
 }

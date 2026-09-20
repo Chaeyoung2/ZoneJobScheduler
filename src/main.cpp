@@ -3,16 +3,21 @@
 #include "ThreadPool.h"
 #include "Producer.h"
 
-#include <chrono>
+#include <array>
 #include <atomic>
-#include <cassert>
+#include <chrono>
+#include <cstdlib>
 #include <iostream>
 #include <memory>
-#include <vector>
-#include <array>
 #include <thread>
+#include <vector>
 
-int main()
+
+bool runJobExecutionTest();
+bool runSameZoneFifoTest();
+bool runDifferentZoneParallelismTest();
+
+bool runJobExecutionTest()
 {
 	constexpr int zoneCount = 4;
 	constexpr int workerCount = 8;
@@ -55,9 +60,9 @@ int main()
 	for (int i = 0; i < producerCount; i++)
 	{
 		producers.push_back(std::make_unique<Producer>(
-			scheduler, 
-			jobsPerProducer, 
-			zoneCount, 
+			scheduler,
+			jobsPerProducer,
+			zoneCount,
 			jobFactory));
 	}
 
@@ -81,100 +86,122 @@ int main()
 		<< wasConcurrentExecutionDetected
 		<< '\n';
 
-	assert(actualJobCount == expectedJobCount);
-	assert(wasConcurrentExecutionDetected == false);
+
+	bool allJobCountsReturnedToZero = true;
 
 	for (const auto& activeJobCount : activeJobCounts)
 	{
-		assert(activeJobCount.load(std::memory_order_relaxed) == 0);
+		if (activeJobCount.load(std::memory_order_relaxed) != 0)
+		{
+			allJobCountsReturnedToZero = false;
+			break;
+		}
 	}
 
-	// FIFO 검증
+	return actualJobCount == expectedJobCount
+		&& wasConcurrentExecutionDetected == false
+		&& allJobCountsReturnedToZero;
+}
+
+bool runSameZoneFifoTest()
+{
+	constexpr int orderedJobCount = 1000;
+
+	ZoneScheduler orderScheduler(1);
+	ThreadPool orderThreadPool(4, orderScheduler);
+
+	std::vector<int> executionOrder(orderedJobCount, -1);
+
+	std::atomic<int> executionIndex = 0;
+
+	for (int jobSequence = 0; jobSequence < orderedJobCount; ++jobSequence)
 	{
-		constexpr int orderedJobCount = 1000;
-
-		ZoneScheduler orderScheduler(1);
-		ThreadPool orderThreadPool(4, orderScheduler);
-
-		std::vector<int> executionOrder(orderedJobCount, -1);
-
-		std::atomic<int> executionIndex = 0;
-
-		for (int jobSequence = 0; jobSequence < orderedJobCount; ++jobSequence)
-		{
-			orderScheduler.submit(0, [&, jobSequence]()
-				{
-					const int index = executionIndex.fetch_add(1, std::memory_order_relaxed);
-					executionOrder[index] = jobSequence;
-				});
-		}
-
-		orderScheduler.shutDown();
-		orderThreadPool.join();
-
-		bool wasOrderPreserved = true;
-
-		for (int expectedSequence = 0; expectedSequence < orderedJobCount; ++expectedSequence)
-		{
-			if (executionOrder[expectedSequence] != expectedSequence)
+		orderScheduler.submit(0, [&, jobSequence]()
 			{
-				wasOrderPreserved = false;
-				break;
+				const int index = executionIndex.fetch_add(1, std::memory_order_relaxed);
+				executionOrder[index] = jobSequence;
+			});
+	}
+
+	orderScheduler.shutDown();
+	orderThreadPool.join();
+
+	bool wasOrderPreserved = true;
+
+	for (int expectedSequence = 0; expectedSequence < orderedJobCount; ++expectedSequence)
+	{
+		if (executionOrder[expectedSequence] != expectedSequence)
+		{
+			wasOrderPreserved = false;
+			break;
+		}
+	}
+
+	std::cout
+		<< "Same-zone FIFO preserved: "
+		<< std::boolalpha
+		<< wasOrderPreserved
+		<< '\n';
+
+
+	return executionIndex.load(std::memory_order_relaxed) == orderedJobCount
+		&& wasOrderPreserved;
+}
+
+bool runDifferentZoneParallelismTest()
+{
+	constexpr int parallelZoneCount = 2;
+	constexpr int parallelWorkerCount = 2;
+	constexpr auto jobDuration = std::chrono::milliseconds(100);
+
+	ZoneScheduler parallelScheduler(parallelZoneCount);
+	ThreadPool parallelThreadPool(parallelWorkerCount, parallelScheduler);
+
+	std::atomic<int> activeJobCount = 0;
+	std::atomic<bool> differentZoneOverlapDetected = false;
+
+	Job parallelJob = [&]()
+		{
+			const int previousActiveJobCount = activeJobCount.fetch_add(1, std::memory_order_relaxed);
+
+			if (previousActiveJobCount > 0)
+			{
+				differentZoneOverlapDetected.store(true, std::memory_order_relaxed);
 			}
-		}
 
-		std::cout
-			<< "Same-zone FIFO preserved: "
-			<< std::boolalpha
-			<< wasOrderPreserved
-			<< '\n';
+			std::this_thread::sleep_for(jobDuration);
 
-		assert(executionIndex.load(std::memory_order_relaxed) == orderedJobCount);
-		assert(wasOrderPreserved);
-	}
+			activeJobCount.fetch_sub(1, std::memory_order_relaxed);
+		};
 
-	// 서로 다른 Zone의 병렬 실행 검증
-	{
-		constexpr int parallelZoneCount = 2;
-		constexpr int parallelWorkerCount = 2;
-		constexpr auto jobDuration = std::chrono::milliseconds(100);
+	parallelScheduler.submit(0, parallelJob);
+	parallelScheduler.submit(1, parallelJob);
 
-		ZoneScheduler parallelScheduler(parallelZoneCount);
-		ThreadPool parallelThreadPool(parallelWorkerCount, parallelScheduler);
-
-		std::atomic<int> activeJobCount = 0;
-		std::atomic<bool> differentZoneOverlapDetected = false;
-
-		Job parallelJob = [&]()
-			{
-				const int previousActiveJobCount = activeJobCount.fetch_add(1, std::memory_order_relaxed);
-
-				if (previousActiveJobCount > 0)
-				{
-					differentZoneOverlapDetected.store(true, std::memory_order_relaxed);
-				}
-
-				std::this_thread::sleep_for(jobDuration);
-
-				activeJobCount.fetch_sub(1, std::memory_order_relaxed);
-			};
-
-		parallelScheduler.submit(0, parallelJob);
-		parallelScheduler.submit(1, parallelJob);
-
-		parallelScheduler.shutDown();
-		parallelThreadPool.join();
+	parallelScheduler.shutDown();
+	parallelThreadPool.join();
 
 
-		const bool wasDifferentZoneOverlapDetected = differentZoneOverlapDetected.load(std::memory_order_relaxed);
+	const bool wasDifferentZoneOverlapDetected = differentZoneOverlapDetected.load(std::memory_order_relaxed);
 
-		std::cout
-			<< "Different-zone overlap detected: "
-			<< std::boolalpha
-			<< wasDifferentZoneOverlapDetected
-			<< '\n';
+	std::cout
+		<< "Different-zone overlap detected: "
+		<< std::boolalpha
+		<< wasDifferentZoneOverlapDetected
+		<< '\n';
 
-		assert(activeJobCount.load(std::memory_order_relaxed) == 0);
-		assert(wasDifferentZoneOverlapDetected);
-	}
+	return activeJobCount.load(std::memory_order_relaxed) == 0
+		&& wasDifferentZoneOverlapDetected;
+}
+
+int main()
+{
+	const bool jobExecutionPassed = runJobExecutionTest();
+	const bool fifoPassed = runSameZoneFifoTest();
+	const bool parallelExecutionPassed = runDifferentZoneParallelismTest();
+
+	return jobExecutionPassed &&
+		fifoPassed &&
+		parallelExecutionPassed
+		? EXIT_SUCCESS
+		: EXIT_FAILURE;
 }

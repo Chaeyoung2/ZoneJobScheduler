@@ -10,7 +10,7 @@ class JobQueue
 public:
 	void push(const Job& job);
 	bool tryPop(Job& job);
-	bool getEmpty() const;
+	bool empty() const;
 
 private:
 	mutable std::mutex m_mutex;

@@ -36,11 +36,11 @@ void Worker::run()
 			job();
 		}
 
-		zone.setScheduled(false);
+		zone.markUnscheduled();
 
-		if (jobQueue.getEmpty() == false)
+		if (jobQueue.empty() == false)
 		{
-			if (zone.setScheduled(true))
+			if (zone.trySchedule())
 			{
 				readyQueue.push(zone);
 			}

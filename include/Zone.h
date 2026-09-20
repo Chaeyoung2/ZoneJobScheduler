@@ -10,17 +10,16 @@
 class Zone
 {
 public:
-	Zone(int id);
+	Zone();
 	~Zone();
 
 	bool submit(const Job& job);
 	JobQueue& getJobQueue();
-	Actor& getActor(int actorIndex);
 	void takeDamageAll(int damage);
-	bool setScheduled(bool scheduled);
+	bool trySchedule();
+	void markUnscheduled();
 
 private:
-	const int m_zoneId;
 	std::atomic<bool> m_isScheduled;
 	JobQueue m_jobQueue;
 	std::vector<Actor> m_actors;

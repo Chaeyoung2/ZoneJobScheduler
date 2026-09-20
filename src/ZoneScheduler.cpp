@@ -6,7 +6,7 @@ ZoneScheduler::ZoneScheduler(int zoneCount)
 {
 	for (int zoneId = 0; zoneId < zoneCount; ++zoneId)
 	{
-		m_zones.push_back(std::make_unique<Zone>(zoneId));
+		m_zones.push_back(std::make_unique<Zone>());
 	}
 }
 
