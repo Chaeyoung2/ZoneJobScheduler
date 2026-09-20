@@ -312,6 +312,53 @@ bool runConcurrentShutdownTest()
 		&& submitAfterShutdownRejected;
 }
 
+bool runAutomaticThreadCleanupTest()
+{
+	constexpr int zoneCount = 2;
+	constexpr int workerCount = 2;
+	constexpr int jobsPerProducer = 100;
+	constexpr int expectedJobCount = zoneCount * jobsPerProducer;
+
+	std::atomic<int> executedJobCount = 0;
+
+	JobFactory jobFactory = [&](int) -> Job
+		{
+			return [&executedJobCount](Zone&)
+				{
+					executedJobCount.fetch_add(1, std::memory_order_relaxed);
+				};
+		};
+
+	ZoneScheduler scheduler(zoneCount);
+
+	{
+		ThreadPool threadPool(workerCount, scheduler);
+
+		// Producer 생성 및 소멸
+		{
+			Producer producer(scheduler, jobsPerProducer, zoneCount, jobFactory);
+		}
+	}
+
+	const int actualJobCount = executedJobCount.load(std::memory_order_relaxed);
+	const bool wereAllJobsExecuted = (actualJobCount == expectedJobCount);
+	const bool submitAfterCleanupRejected = (scheduler.submit(0, jobFactory(0)) == false);
+
+	std::cout
+		<< "Automatic cleanup executed jobs: "
+		<< actualJobCount
+		<< " / "
+		<< expectedJobCount
+		<< '\n'
+		<< "Submit after automatic cleanup rejected: "
+		<< std::boolalpha
+		<< submitAfterCleanupRejected
+		<< '\n';
+
+	return wereAllJobsExecuted
+		&& submitAfterCleanupRejected;
+}
+
 int main()
 {
 	const bool jobExecutionPassed = runJobExecutionTest();
@@ -319,12 +366,14 @@ int main()
 	const bool fifoPassed = runSameZoneFifoTest();
 	const bool parallelExecutionPassed = runDifferentZoneParallelismTest();
 	const bool concurrentShutdownPassed = runConcurrentShutdownTest();
+	const bool automaticThreadCleanupPassed = runAutomaticThreadCleanupTest();
 
 	return jobExecutionPassed &&
 		actorStatePassed &&
 		fifoPassed &&
 		parallelExecutionPassed &&
-		concurrentShutdownPassed
+		concurrentShutdownPassed &&
+		automaticThreadCleanupPassed
 		? EXIT_SUCCESS
 		: EXIT_FAILURE;
 }
