@@ -20,7 +20,7 @@ void ZoneScheduler::submit(int zoneId, const Job& job)
 	}
 }
 
-Zone& ZoneScheduler::getZone(int zoneId)
+const Zone& ZoneScheduler::getZone(int zoneId) const
 {
 	return *m_zones[zoneId];
 }

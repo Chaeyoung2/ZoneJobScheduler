@@ -35,7 +35,7 @@ bool runJobExecutionTest()
 
 	JobFactory jobFactory = [&](int zoneId) -> Job
 		{
-			return [&, zoneId]()
+			return [&, zoneId](Zone& zone)
 				{
 					const int previousActiveCount = activeJobCounts[zoneId].fetch_add(1, std::memory_order_relaxed);
 
@@ -46,7 +46,7 @@ bool runJobExecutionTest()
 
 					std::this_thread::yield();
 
-					scheduler.getZone(zoneId).takeDamageAll(1);
+					zone.takeDamageAll(1);
 
 					activeJobCounts[zoneId].fetch_sub(1, std::memory_order_relaxed);
 
@@ -116,9 +116,9 @@ bool runActorStateTest()
 
 	for (int i = 0; i < damageJobCount; ++i)
 	{
-		scheduler.submit(0, [&scheduler]()
+		scheduler.submit(0, [damageAmount](Zone& zone)
 			{
-				scheduler.getZone(0).takeDamageAll(damageAmount);
+				zone.takeDamageAll(damageAmount);
 			});
 	}
 
@@ -150,7 +150,7 @@ bool runSameZoneFifoTest()
 
 	for (int jobSequence = 0; jobSequence < orderedJobCount; ++jobSequence)
 	{
-		orderScheduler.submit(0, [&, jobSequence]()
+		orderScheduler.submit(0, [&, jobSequence](Zone&)
 			{
 				const int index = executionIndex.fetch_add(1, std::memory_order_relaxed);
 				executionOrder[index] = jobSequence;
@@ -194,7 +194,7 @@ bool runDifferentZoneParallelismTest()
 	std::atomic<int> activeJobCount = 0;
 	std::atomic<bool> differentZoneOverlapDetected = false;
 
-	Job parallelJob = [&]()
+	Job parallelJob = [&](Zone&)
 		{
 			const int previousActiveJobCount = activeJobCount.fetch_add(1, std::memory_order_relaxed);
 

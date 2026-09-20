@@ -33,7 +33,7 @@ void Worker::run()
 		Job job;
 		while (jobQueue.tryPop(job))
 		{
-			job();
+			job(zone);
 		}
 
 		zone.markUnscheduled();

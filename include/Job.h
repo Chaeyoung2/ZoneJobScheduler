@@ -2,4 +2,6 @@
 
 #include <functional>
 
-using Job = std::function<void()>;
+class Zone;
+
+using Job = std::function<void(Zone&)>;

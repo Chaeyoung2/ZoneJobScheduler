@@ -5,6 +5,7 @@
 #include <memory>
 #include <vector>
 
+class Worker;
 class Zone;
 
 class ZoneScheduler 
@@ -14,11 +15,14 @@ public:
 	~ZoneScheduler();
 
 	void submit(int zoneId, const Job& job);
-	Zone& getZone(int zoneId);
-	ReadyQueue& getReadyQueue();
+	const Zone& getZone(int zoneId) const;
 	void shutDown();
 
 private:
+	friend class Worker;
+
+	ReadyQueue& getReadyQueue();
+
 	std::vector<std::unique_ptr<Zone>> m_zones;
 	ReadyQueue m_readyQueue;
 };

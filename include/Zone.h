@@ -7,20 +7,27 @@
 #include <atomic>
 #include <vector>
 
+class Worker;
+class ZoneScheduler;
+
 class Zone
 {
 public:
 	Zone();
 	~Zone();
 
-	bool submit(const Job& job);
-	JobQueue& getJobQueue();
 	void takeDamageAll(int damage);
-	bool trySchedule();
-	void markUnscheduled();
 	bool allActorsHaveHp(int expectedHp) const;
 
 private:
+	friend class Worker;
+	friend class ZoneScheduler;
+
+	bool submit(const Job& job);
+	JobQueue& getJobQueue();
+	bool trySchedule();
+	void markUnscheduled();
+
 	std::atomic<bool> m_isScheduled;
 	JobQueue m_jobQueue;
 	std::vector<Actor> m_actors;
