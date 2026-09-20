@@ -60,6 +60,16 @@ Worker가 Zone의 현재 Job을 모두 처리하면 `m_isScheduled`를 `false`�
 | `Producer` | 테스트 Job 생성 및 Scheduler 제출 |
 | `Actor` | Job이 실제로 변경하는 최소 게임 상태 객체 |
 
+## 프로젝트 구조
+
+```text
+ZoneJobScheduler/
+├─ include/        # 클래스 선언과 Job 타입
+├─ src/            # 클래스 구현과 실행 검증 코드
+├─ CMakeLists.txt  # 빌드 대상과 테스트 정의
+└─ README.md
+```
+
 ## 사용한 동시성 요소
 
 - `std::thread`
@@ -71,10 +81,12 @@ Worker가 Zone의 현재 Job을 모두 처리하면 `m_isScheduled`를 `false`�
 
 ## 현재 검증된 항목
 
-- 여러 Producer가 제출한 모든 Job이 실행되는지 확인
+- 여러 Producer가 제출한 16,000개 Job이 모두 실행되는지 확인
+- 같은 Zone의 Job이 동시에 실행되지 않는지 확인
+- 같은 Zone의 Job이 제출 순서대로 실행되는지 확인
+- 서로 다른 Zone의 Job 실행 구간이 실제로 겹치는지 확인
 - ReadyQueue shutdown 후 대기 중인 Worker가 종료되는지 확인
 - 모든 Worker Thread가 `join()`을 통해 정상 종료되는지 확인
-- Zone별 실행 카운터를 사용해 같은 Zone의 Job이 동시에 실행되지 않는지 확인
 
 현재 테스트 출력 예시:
 
@@ -82,29 +94,25 @@ Worker가 Zone의 현재 Job을 모두 처리하면 `m_isScheduled`를 `false`�
 Expected jobs: 16000
 Executed jobs: 16000
 Same-zone overlap detected: false
+Same-zone FIFO preserved: true
+Different-zone overlap detected: true
 ```
-
-동일 Zone의 실행 순서 보존과 서로 다른 Zone의 실제 병렬 실행은 후속 검증
-항목입니다.
 
 ## 빌드 환경
 
 - C++20
 - CMake 3.20 이상
-- Visual Studio 2022 / MSVC
+- Visual Studio 2022 이상 / MSVC
 
-Visual Studio 2022가 설치된 환경에서 다음과 같이 빌드할 수 있습니다.
+Visual Studio의 Developer PowerShell에서 다음과 같이 빌드하고 테스트할 수 있습니다.
 
 ```powershell
-cmake -S . -B build -G "Visual Studio 17 2022" -A x64
+cmake -S . -B build
 cmake --build build --config Debug
+ctest --test-dir build -C Debug --output-on-failure
 ```
 
-실행 파일:
-
-```text
-build/Debug/ZoneJobScheduler.exe
-```
+실행 파일 위치는 사용한 CMake generator에 따라 `build/` 또는 `build/Debug/`입니다.
 
 ## 범위와 한계
 
@@ -117,13 +125,14 @@ build/Debug/ZoneJobScheduler.exe
 - Cross-Zone 상태 변경
 - Lock-free queue 및 Memory Pool
 
-한 Zone에 Job이 집중되면 해당 Zone 내부는 순차 실행되므로 
-Worker 수를 늘려도 처리량이 선형으로 증가하지 않습니다. 
-이후 Worker 수와 workload를 변경하며 이 확장성 한계를 측정할 예정입니다.
+한 Zone에 Job이 집중되면 해당 Zone 내부는 순차 실행되므로
+Worker 수를 늘려도 처리량이 선형으로 증가하지 않습니다.
+Worker 수와 workload에 따른 차이는 추가 실험 후보로 남겨 두었습니다.
 
-## 다음 검증 목표
+## 추가 실험 후보
 
-1. 같은 Zone에 제출된 Job의 실행 순서 보존
-2. 서로 다른 Zone의 실제 병렬 실행
-3. Worker 수에 따른 처리량 비교
-4. Hot Zone workload의 확장성 한계 측정
+핵심 정확성 검증은 완료했습니다. 다음 실험은 Scheduler의 확장성 한계를 측정하기 위한 선택 항목입니다.
+
+1. Worker 수에 따른 처리량 비교
+2. Balanced workload와 Hot Zone workload 비교
+3. 한 Zone에 Job이 집중될 때 발생하는 직렬 처리 병목 측정

@@ -7,13 +7,44 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 add_executable(ZoneJobScheduler
-	main.cpp
-	Actor.cpp
-	JobQueue.cpp
-	ReadyQueue.cpp
-	Zone.cpp
-	ZoneScheduler.cpp
-	Worker.cpp
-	ThreadPool.cpp
-	Producer.cpp
+	src/main.cpp
+	src/Actor.cpp
+	src/JobQueue.cpp
+	src/Producer.cpp
+	src/ReadyQueue.cpp
+	src/ThreadPool.cpp
+	src/Worker.cpp
+	src/Zone.cpp
+	src/ZoneScheduler.cpp
+	include/Actor.h
+	include/Job.h
+	include/JobQueue.h
+	include/Producer.h
+	include/ReadyQueue.h
+	include/ThreadPool.h
+	include/Worker.h
+	include/Zone.h
+	include/ZoneScheduler.h
+)
+
+target_include_directories(ZoneJobScheduler PRIVATE include)
+
+if(MSVC)
+    target_compile_options(ZoneJobScheduler PRIVATE
+        /W4
+        /permissive-
+    )
+else()
+    target_compile_options(ZoneJobScheduler PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+    )
+endif()
+
+enable_testing()
+
+add_test(
+    NAME ZoneJobSchedulerCorrectness
+    COMMAND ZoneJobScheduler
 )

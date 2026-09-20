@@ -3,6 +3,7 @@
 #include "ThreadPool.h"
 #include "Producer.h"
 
+#include <chrono>
 #include <atomic>
 #include <cassert>
 #include <iostream>
@@ -130,5 +131,50 @@ int main()
 
 		assert(executionIndex.load(std::memory_order_relaxed) == orderedJobCount);
 		assert(wasOrderPreserved);
+	}
+
+	// 서로 다른 Zone의 병렬 실행 검증
+	{
+		constexpr int parallelZoneCount = 2;
+		constexpr int parallelWorkerCount = 2;
+		constexpr auto jobDuration = std::chrono::milliseconds(100);
+
+		ZoneScheduler parallelScheduler(parallelZoneCount);
+		ThreadPool parallelThreadPool(parallelWorkerCount, parallelScheduler);
+
+		std::atomic<int> activeJobCount = 0;
+		std::atomic<bool> differentZoneOverlapDetected = false;
+
+		Job parallelJob = [&]()
+			{
+				const int previousActiveJobCount = activeJobCount.fetch_add(1, std::memory_order_relaxed);
+
+				if (previousActiveJobCount > 0)
+				{
+					differentZoneOverlapDetected.store(true, std::memory_order_relaxed);
+				}
+
+				std::this_thread::sleep_for(jobDuration);
+
+				activeJobCount.fetch_sub(1, std::memory_order_relaxed);
+			};
+
+		parallelScheduler.submit(0, parallelJob);
+		parallelScheduler.submit(1, parallelJob);
+
+		parallelScheduler.shutDown();
+		parallelThreadPool.join();
+
+
+		const bool wasDifferentZoneOverlapDetected = differentZoneOverlapDetected.load(std::memory_order_relaxed);
+
+		std::cout
+			<< "Different-zone overlap detected: "
+			<< std::boolalpha
+			<< wasDifferentZoneOverlapDetected
+			<< '\n';
+
+		assert(activeJobCount.load(std::memory_order_relaxed) == 0);
+		assert(wasDifferentZoneOverlapDetected);
 	}
 }
