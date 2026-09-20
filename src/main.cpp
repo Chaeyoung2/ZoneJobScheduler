@@ -277,11 +277,11 @@ bool runConcurrentShutdownTest()
 			int zoneId = 0;
 
 			submitterStarted.store(true, std::memory_order_release);
+			submitterStarted.notify_one();
 
 			while (scheduler.submit(zoneId, job))
 			{
 				acceptedJobCount.fetch_add(1, std::memory_order_relaxed);
-
 				zoneId = (zoneId + 1) % zoneCount;
 
 				std::this_thread::yield();
@@ -290,10 +290,7 @@ bool runConcurrentShutdownTest()
 			rejectionObserved.store(true, std::memory_order_relaxed);
 		});
 
-	while (submitterStarted.load(std::memory_order_acquire) == false)
-	{
-		std::this_thread::yield();
-	}
+	submitterStarted.wait(false, std::memory_order_acquire);
 
 	scheduler.shutDown();
 
