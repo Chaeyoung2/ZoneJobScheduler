@@ -227,17 +227,104 @@ bool runDifferentZoneParallelismTest()
 		&& wasDifferentZoneOverlapDetected;
 }
 
+bool runConcurrentShutdownTest()
+{
+	constexpr int zoneCount = 2;
+	constexpr int workerCount = 2;
+	constexpr int initialJobCount = 100;
+
+	std::atomic<int> acceptedJobCount = 0;
+	std::atomic<int> executedJobCount = 0;
+	std::atomic<bool> submitterStarted = false;
+	std::atomic<bool> rejectionObserved = false;
+
+	ZoneScheduler scheduler(zoneCount);
+	ThreadPool threadPool(workerCount, scheduler);
+
+	Job job = [&](Zone&)
+		{
+			executedJobCount.fetch_add(	1, std::memory_order_relaxed);
+		};
+
+	for (int i = 0; i < initialJobCount; ++i)
+	{
+		const int zoneId = i % zoneCount;
+
+		if (scheduler.submit(zoneId, job))
+		{
+			acceptedJobCount.fetch_add(1, std::memory_order_relaxed);
+		}
+	}
+
+	std::thread submitter([&]()
+		{
+			int zoneId = 0;
+
+			submitterStarted.store(true, std::memory_order_release);
+
+			while (scheduler.submit(zoneId, job))
+			{
+				acceptedJobCount.fetch_add(1, std::memory_order_relaxed);
+
+				zoneId = (zoneId + 1) % zoneCount;
+
+				std::this_thread::yield();
+			}
+
+			rejectionObserved.store(true, std::memory_order_relaxed);
+		});
+
+	while (submitterStarted.load(std::memory_order_acquire) == false)
+	{
+		std::this_thread::yield();
+	}
+
+	scheduler.shutDown();
+
+	submitter.join();
+	threadPool.join();
+
+	const bool submitAfterShutdownRejected = scheduler.submit(0, job) == false;
+
+	const int acceptedCount = acceptedJobCount.load(std::memory_order_relaxed);
+	const int executedCount = executedJobCount.load(std::memory_order_relaxed);
+
+	const bool wereAllAcceptedJobsExecuted = acceptedCount == executedCount;
+	const bool wasConcurrentSubmissionRejected = rejectionObserved.load(std::memory_order_relaxed);
+
+	std::cout
+		<< "Accepted jobs during shutdown: "
+		<< acceptedCount
+		<< '\n'
+		<< "Executed jobs during shutdown: "
+		<< executedCount
+		<< '\n'
+		<< "Concurrent submit rejected: "
+		<< std::boolalpha
+		<< wasConcurrentSubmissionRejected
+		<< '\n'
+		<< "Submit after shutdown rejected: "
+		<< submitAfterShutdownRejected
+		<< '\n';
+
+	return wereAllAcceptedJobsExecuted
+		&& wasConcurrentSubmissionRejected
+		&& submitAfterShutdownRejected;
+}
+
 int main()
 {
 	const bool jobExecutionPassed = runJobExecutionTest();
 	const bool actorStatePassed = runActorStateTest();
 	const bool fifoPassed = runSameZoneFifoTest();
 	const bool parallelExecutionPassed = runDifferentZoneParallelismTest();
+	const bool concurrentShutdownPassed = runConcurrentShutdownTest();
 
 	return jobExecutionPassed &&
 		actorStatePassed &&
 		fifoPassed &&
-		parallelExecutionPassed
+		parallelExecutionPassed &&
+		concurrentShutdownPassed
 		? EXIT_SUCCESS
 		: EXIT_FAILURE;
 }

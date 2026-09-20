@@ -1,6 +1,8 @@
 #include "ZoneScheduler.h"
-
 #include "Zone.h"
+
+#include <shared_mutex>
+#include <mutex>
 
 ZoneScheduler::ZoneScheduler(int zoneCount)
 {
@@ -12,12 +14,23 @@ ZoneScheduler::ZoneScheduler(int zoneCount)
 
 ZoneScheduler::~ZoneScheduler() = default;
 
-void ZoneScheduler::submit(int zoneId, const Job& job)
+bool ZoneScheduler::submit(int zoneId, const Job& job)
 {
-	if (m_zones[zoneId]->submit(job))
+	std::shared_lock<std::shared_mutex> lifecycleLock(m_lifecycleMutex);
+
+	if (m_isAcceptingJobs == false)
 	{
-		m_readyQueue.push(*m_zones[zoneId]);
+		return false;
 	}
+
+	Zone& zone = *m_zones[zoneId];
+
+	if (zone.submit(job))
+	{
+		m_readyQueue.push(zone);
+	}
+
+	return true;
 }
 
 const Zone& ZoneScheduler::getZone(int zoneId) const
@@ -32,5 +45,13 @@ ReadyQueue& ZoneScheduler::getReadyQueue()
 
 void ZoneScheduler::shutDown()
 {
+	std::unique_lock<std::shared_mutex> lifecycleLock(m_lifecycleMutex);
+
+	if (m_isAcceptingJobs == false)
+	{
+		return;
+	}
+
+	m_isAcceptingJobs = false;
 	m_readyQueue.shutDown();
 }

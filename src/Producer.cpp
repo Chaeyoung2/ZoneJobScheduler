@@ -25,7 +25,10 @@ void Producer::run()
 	{
 		for (int jobIndex = 0; jobIndex < m_jobsPerProducer; ++jobIndex)
 		{
-			m_zoneScheduler.submit(zoneId, m_jobFactory(zoneId));
+			if (m_zoneScheduler.submit(zoneId, m_jobFactory(zoneId)) == false)
+			{
+				return;
+			}
 		}
 	}
 }
