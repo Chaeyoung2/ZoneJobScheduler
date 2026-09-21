@@ -4,12 +4,13 @@
 
 #include <mutex>
 #include <queue>
+#include <optional>
 
 class JobQueue 
 {
 public:
 	void push(const Job& job);
-	bool tryPop(Job& job);
+	std::optional<Job> tryPop();
 	bool empty() const;
 
 private:

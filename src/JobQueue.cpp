@@ -8,19 +8,19 @@ void JobQueue::push(const Job& job)
 	m_jobQueue.push(job);
 }
 
-bool JobQueue::tryPop(Job& job)
+std::optional<Job> JobQueue::tryPop()
 {
 	std::lock_guard<std::mutex> lock(m_mutex);
 
 	if (m_jobQueue.empty())
 	{
-		return false;
+		return std::nullopt;
 	}
 
-	job = std::move(m_jobQueue.front());
+	std::optional<Job> job{ std::move(m_jobQueue.front()) };
 	m_jobQueue.pop();
 
-	return true;
+	return job;
 }
 
 bool JobQueue::empty() const

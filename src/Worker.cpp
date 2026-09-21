@@ -33,16 +33,9 @@ void Worker::run()
 		Zone& zone = nextZone->get();
 		JobQueue& jobQueue = zone.getJobQueue();
 
-		while (true)
+		while (auto job = jobQueue.tryPop())
 		{
-			Job job;
-
-			if (jobQueue.tryPop(job) == false)
-			{
-				break;
-			}
-
-			job(zone);
+			(*job)(zone);
 		}
 
 		zone.markUnscheduled();
