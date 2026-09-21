@@ -249,7 +249,7 @@ namespace zonejobscheduler::tests
 			return didBothJobsReachGate;
 		}
 
-		bool runConcurrentShutdownTest()
+		bool runSubmitShutdownBoundaryTest()
 		{
 			constexpr int zoneCount = 2;
 			constexpr int workerCount = 2;
@@ -257,7 +257,7 @@ namespace zonejobscheduler::tests
 
 			std::atomic<int> acceptedJobCount = 0;
 			std::atomic<int> executedJobCount = 0;
-			std::atomic<bool> submitterStarted = false;
+			std::atomic<bool> submitterAcceptedJob = false;
 			std::atomic<bool> rejectionObserved = false;
 
 			ZoneScheduler scheduler(zoneCount);
@@ -282,22 +282,24 @@ namespace zonejobscheduler::tests
 				{
 					int zoneId = 0;
 
-					submitterStarted.store(true, std::memory_order_release);
-					submitterStarted.notify_one();
-
 					while (scheduler.submit(zoneId, job))
 					{
 						acceptedJobCount.fetch_add(1, std::memory_order_relaxed);
-						zoneId = (zoneId + 1) % zoneCount;
 
+						if (submitterAcceptedJob.exchange(
+							true, std::memory_order_release) == false)
+						{
+							submitterAcceptedJob.notify_one();
+						}
+
+						zoneId = (zoneId + 1) % zoneCount;
 						std::this_thread::yield();
 					}
 
 					rejectionObserved.store(true, std::memory_order_relaxed);
 				});
 
-			submitterStarted.wait(false, std::memory_order_acquire);
-
+			submitterAcceptedJob.wait(false, std::memory_order_acquire);
 			scheduler.shutDown();
 
 			submitter.join();
@@ -318,7 +320,7 @@ namespace zonejobscheduler::tests
 				<< "Executed jobs during shutdown: "
 				<< executedCount
 				<< '\n'
-				<< "Concurrent submit rejected: "
+				<< "Submitter observed shutdown: "
 				<< std::boolalpha
 				<< wasConcurrentSubmissionRejected
 				<< '\n'
@@ -384,7 +386,7 @@ namespace zonejobscheduler::tests
 		const bool actorStatePassed = runActorStateTest();
 		const bool fifoPassed = runSameZoneFifoTest();
 		const bool parallelExecutionPassed = runDifferentZoneParallelismTest();
-		const bool concurrentShutdownPassed = runConcurrentShutdownTest();
+		const bool concurrentShutdownPassed = runSubmitShutdownBoundaryTest();
 		const bool automaticThreadCleanupPassed = runAutomaticThreadCleanupTest();
 
 		return jobExecutionPassed
