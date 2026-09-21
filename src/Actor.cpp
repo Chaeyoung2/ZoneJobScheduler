@@ -2,7 +2,7 @@
 
 Actor::Actor() = default;
 
-bool Actor::takeDamage(int damage)
+bool Actor::takeDamage(const int damage)
 {
     if (damage < 0)
     {
