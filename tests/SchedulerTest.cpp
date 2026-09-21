@@ -37,9 +37,10 @@ namespace zonejobscheduler::tests
 			ZoneScheduler scheduler(zoneCount);
 			ThreadPool threadPool(workerCount, scheduler);
 
-			JobFactory jobFactory = [&](int zoneId) -> Job
+			JobFactory jobFactory = 
+				[&activeJobCounts, &concurrentExecutionDetected, &executedJobCount](int zoneId) -> Job
 				{
-					return [&, zoneId](Zone& zone)
+					return [&activeJobCounts, &concurrentExecutionDetected, &executedJobCount, zoneId](Zone& zone)
 						{
 							const int previousActiveCount = activeJobCounts[zoneId].fetch_add(1, std::memory_order_relaxed);
 
