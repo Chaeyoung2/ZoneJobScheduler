@@ -65,7 +65,8 @@ Worker가 Zone의 현재 Job을 모두 처리하면 `m_isScheduled`를 `false`�
 ```text
 ZoneJobScheduler/
 ├─ include/        # 클래스 선언과 Job 타입
-├─ src/            # 클래스 구현과 실행 검증 코드
+├─ src/            # 클래스 구현과 실행 진입점
+├─ tests/          # Scheduler 실행 검증 코드
 ├─ CMakeLists.txt  # 빌드 대상과 테스트 정의
 └─ README.md
 ```
@@ -76,17 +77,34 @@ ZoneJobScheduler/
 - `std::mutex`
 - `std::condition_variable`
 - `std::atomic<bool>`과 CAS
+- `std::shared_mutex`로 Job 접수와 shutdown의 경계 보호
+- C++20 `std::atomic::wait()`로 테스트 Thread 시작 대기
 - RAII 기반 lock 관리
 - `std::unique_ptr` 기반 소유권 관리
+
+## 종료와 Job 접수 규약
+
+`ZoneScheduler::submit()`은 Job을 접수하면 `true`, shutdown 이후라 접수하지 않으면
+`false`를 반환합니다. `submit()`은 JobQueue 저장과 필요한 ReadyQueue 등록을
+마칠 때까지 lifecycle shared lock을 유지합니다. `shutDown()`은 unique lock으로
+진행 중인 제출이 끝나기를 기다린 뒤 새 Job 접수를 막고 ReadyQueue를 종료합니다.
+
+ReadyQueue는 이미 등록된 Zone을 계속 Worker에 전달합니다. Worker는 접수된 Job을
+처리한 뒤 종료하고, `ThreadPool::join()`은 모든 Worker의 종료를 기다립니다.
+`ThreadPool` 소멸자도 Scheduler shutdown과 Worker join을 수행하므로 호출자가
+명시적으로 종료 함수를 호출하지 않아도 Thread를 정리합니다. 이때 Scheduler는
+ThreadPool과 Producer보다 오래 살아 있어야 합니다.
 
 ## 현재 검증된 항목
 
 - 여러 Producer가 제출한 16,000개 Job이 모두 실행되는지 확인
+- Job 실행 후 모든 Actor의 HP가 예상값과 같은지 확인
 - 같은 Zone의 Job이 동시에 실행되지 않는지 확인
 - 같은 Zone의 Job이 제출 순서대로 실행되는지 확인
-- 서로 다른 Zone의 Job 실행 구간이 실제로 겹치는지 확인
-- ReadyQueue shutdown 후 대기 중인 Worker가 종료되는지 확인
-- 모든 Worker Thread가 `join()`을 통해 정상 종료되는지 확인
+- 서로 다른 Zone의 Job 두 개가 제한 시간 안에 같은 실행 구간에 진입하는지 확인
+- 제출 스레드의 첫 Job 접수를 확인한 뒤 shutdown을 시작해 접수된 Job이 모두 실행되는지 확인
+- 제출 스레드가 shutdown을 관찰하고 이후 제출을 중단하는지 확인
+- 명시적인 shutdown·join 없이도 Producer와 ThreadPool 소멸자가 Thread를 정리하는지 확인
 
 현재 테스트 출력 예시:
 
@@ -94,9 +112,22 @@ ZoneJobScheduler/
 Expected jobs: 16000
 Executed jobs: 16000
 Same-zone overlap detected: false
+All actors have expected HP: true
 Same-zone FIFO preserved: true
 Different-zone overlap detected: true
+Accepted jobs during shutdown: 108
+Executed jobs during shutdown: 108
+Submitter observed shutdown: true
+Submit after shutdown rejected: true
+Automatic cleanup executed jobs: 200 / 200
+Submit after automatic cleanup rejected: true
 ```
+
+shutdown 테스트의 접수 수에는 시작 전에 넣은 Job 100개와 제출 스레드가 접수한
+Job이 모두 포함됩니다. 제출 스레드가 적어도 하나를 접수한 뒤 shutdown을 시작하며,
+접수된 수와 실행된 수가 같은지, 종료 후 제출이 거부되는지 확인합니다. 접수 수는
+실행 시점마다 달라질 수 있고, 두 스레드가 정확히 같은 순간 잠금을 놓고 경쟁했음을
+보장하는 테스트는 아닙니다.
 
 ## 빌드 환경
 
@@ -127,7 +158,12 @@ ctest --test-dir build -C Debug --output-on-failure
 
 한 Zone에 Job이 집중되면 해당 Zone 내부는 순차 실행되므로
 Worker 수를 늘려도 처리량이 선형으로 증가하지 않습니다.
+Worker가 선택한 Zone의 JobQueue를 빌 때까지 처리하기 때문에, 계속 Job이
+들어오는 Hot Zone은 다른 Zone의 대기 시간을 늘릴 수 있습니다.
 Worker 수와 workload에 따른 차이는 추가 실험 후보로 남겨 두었습니다.
+
+이 프로젝트는 정확성 검증에 초점을 맞췄으며 처리량이나 지연 시간의 성능
+수치는 측정하지 않았습니다.
 
 ## 추가 실험 후보
 
