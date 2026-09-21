@@ -40,11 +40,6 @@ bool ZoneScheduler::submit(int zoneId, const Job& job)
 	return true;
 }
 
-const Zone& ZoneScheduler::getZone(int zoneId) const
-{
-	return *m_zones.at(static_cast<std::size_t>(zoneId));
-}
-
 ReadyQueue& ZoneScheduler::getReadyQueue()
 {
 	return m_readyQueue;

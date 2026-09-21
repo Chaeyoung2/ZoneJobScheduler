@@ -111,6 +111,8 @@ namespace zonejobscheduler::tests
 			constexpr std::size_t workerCount = 2;
 			constexpr int damageAmount = 1;
 
+			std::atomic<bool> allActorsHaveExpectedHp{ false };
+
 			ZoneScheduler scheduler(zoneCount);
 			ThreadPool threadPool(workerCount, scheduler);
 
@@ -122,19 +124,25 @@ namespace zonejobscheduler::tests
 					});
 			}
 
+			const bool validationAccepted = scheduler.submit(
+				0,
+				[expectedHp, &allActorsHaveExpectedHp](Zone& zone)
+				{
+					allActorsHaveExpectedHp.store(zone.allActorsHaveHp(expectedHp), std::memory_order_relaxed);
+				});
+
 			scheduler.shutDown();
 			threadPool.join();
 
-			const bool allActorsHaveExpectedHp =
-				scheduler.getZone(0).allActorsHaveHp(expectedHp);
+			const bool passed = validationAccepted && allActorsHaveExpectedHp.load(std::memory_order_relaxed);
 
 			std::cout
 				<< "All actors have expected HP: "
 				<< std::boolalpha
-				<< allActorsHaveExpectedHp
+				<< passed
 				<< '\n';
 
-			return allActorsHaveExpectedHp;
+			return passed;
 		}
 
 		bool runSameZoneFifoTest()

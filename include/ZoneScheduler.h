@@ -17,7 +17,6 @@ public:
 	~ZoneScheduler();
 
 	bool submit(int zoneId, const Job& job);
-	const Zone& getZone(int zoneId) const;
 	void shutDown();
 
 private:
