@@ -33,9 +33,15 @@ void Worker::run()
 		Zone& zone = nextZone->get();
 		JobQueue& jobQueue = zone.getJobQueue();
 
-		Job job;
-		while (jobQueue.tryPop(job))
+		while (true)
 		{
+			Job job;
+
+			if (jobQueue.tryPop(job) == false)
+			{
+				break;
+			}
+
 			job(zone);
 		}
 
