@@ -8,6 +8,8 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 add_executable(ZoneJobScheduler
 	src/main.cpp
+	tests/SchedulerTest.cpp
+	tests/SchedulerTest.h
 	src/Actor.cpp
 	src/JobQueue.cpp
 	src/Producer.cpp
@@ -27,7 +29,7 @@ add_executable(ZoneJobScheduler
 	include/ZoneScheduler.h
 )
 
-target_include_directories(ZoneJobScheduler PRIVATE include)
+target_include_directories(ZoneJobScheduler PRIVATE include tests)
 
 if(MSVC)
     target_compile_options(ZoneJobScheduler PRIVATE
