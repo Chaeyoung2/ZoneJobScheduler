@@ -3,6 +3,7 @@
 #include "Zone.h"
 #include "ZoneScheduler.h"
 
+#include <algorithm>
 #include <array>
 #include <atomic>
 #include <chrono>
@@ -84,16 +85,12 @@ bool runJobExecutionTest()
 		<< '\n';
 
 
-	bool allJobCountsReturnedToZero = true;
-
-	for (const auto& activeJobCount : activeJobCounts)
-	{
-		if (activeJobCount.load(std::memory_order_relaxed) != 0)
+	const bool allJobCountsReturnedToZero = std::ranges::all_of(
+		activeJobCounts,
+		[](const std::atomic<int>& activeJobCount)
 		{
-			allJobCountsReturnedToZero = false;
-			break;
-		}
-	}
+			return activeJobCount.load(std::memory_order_relaxed) == 0;
+		});
 
 	return actualJobCount == expectedJobCount
 		&& wasConcurrentExecutionDetected == false
