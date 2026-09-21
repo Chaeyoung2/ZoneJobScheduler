@@ -1,25 +1,24 @@
 #include "Actor.h"
 
-#include <cassert>
-
 Actor::Actor() = default;
 
-void Actor::takeDamage(int damage)
+bool Actor::takeDamage(int damage)
 {
-	assert(damage >= 0);
-
-    if (damage <= 0)
+    if (damage < 0)
     {
-        return;
+        return false;
     }
 
-    if (damage > m_hp)
+    if (damage >= m_hp)
     {
         m_hp = 0;
-        return;
+    }
+    else
+    {
+        m_hp -= damage;
     }
 
-    m_hp -= damage;
+    return true;
 }
 
 int Actor::getHp() const

@@ -5,7 +5,7 @@ class Actor
 public:
     Actor();
 
-    void takeDamage(int damage);
+    [[nodiscard]] bool takeDamage(int damage);
     int getHp() const;
 
 private:

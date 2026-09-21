@@ -16,7 +16,7 @@ public:
 	Zone();
 	~Zone();
 
-	void takeDamageAll(int damage);
+	[[nodiscard]] bool takeDamageAll(int damage);
 	bool allActorsHaveHp(int expectedHp) const;
 
 private:

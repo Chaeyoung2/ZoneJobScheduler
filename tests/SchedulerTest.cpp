@@ -28,19 +28,21 @@ namespace zonejobscheduler::tests
 			constexpr int producerCount = 4;
 			constexpr int jobsPerProducer = 1000;
 			constexpr int expectedJobCount = producerCount * zoneCount * jobsPerProducer;
+			constexpr int damageAmount = 1;
 
 			std::atomic<int> executedJobCount = 0;
 
 			std::array<std::atomic<int>, zoneCount> activeJobCounts{};
 			std::atomic<bool> concurrentExecutionDetected = false;
+			std::atomic<bool> damageApplyFailed = false;
 
 			ZoneScheduler scheduler(zoneCount);
 			ThreadPool threadPool(workerCount, scheduler);
 
 			JobFactory jobFactory = 
-				[&activeJobCounts, &concurrentExecutionDetected, &executedJobCount](int zoneId) -> Job
+				[&activeJobCounts, &concurrentExecutionDetected, &executedJobCount, &damageApplyFailed](int zoneId) -> Job
 				{
-					return [&activeJobCounts, &concurrentExecutionDetected, &executedJobCount, zoneId](Zone& zone)
+					return [&activeJobCounts, &concurrentExecutionDetected, &executedJobCount, zoneId, &damageApplyFailed](Zone& zone)
 						{
 							const int previousActiveCount = activeJobCounts[zoneId].fetch_add(1, std::memory_order_relaxed);
 
@@ -51,7 +53,10 @@ namespace zonejobscheduler::tests
 
 							std::this_thread::yield();
 
-							zone.takeDamageAll(1);
+							if (zone.takeDamageAll(damageAmount) == false)
+							{
+								damageApplyFailed.store(true, std::memory_order_relaxed);
+							}
 
 							activeJobCounts[zoneId].fetch_sub(1, std::memory_order_relaxed);
 
@@ -101,7 +106,8 @@ namespace zonejobscheduler::tests
 
 			return actualJobCount == expectedJobCount
 				&& wasConcurrentExecutionDetected == false
-				&& allJobCountsReturnedToZero;
+				&& allJobCountsReturnedToZero
+				&& damageApplyFailed.load(std::memory_order_relaxed) == false;
 		}
 
 		bool runActorStateTest()
@@ -113,15 +119,19 @@ namespace zonejobscheduler::tests
 			constexpr int damageAmount = 1;
 
 			std::atomic<bool> allActorsHaveExpectedHp{ false };
+			std::atomic<bool> damageApplyFailed{ false };
 
 			ZoneScheduler scheduler(zoneCount);
 			ThreadPool threadPool(workerCount, scheduler);
 
 			for (int i = 0; i < damageJobCount; ++i)
 			{
-				scheduler.submit(0, [damageAmount](Zone& zone)
+				scheduler.submit(0, [damageAmount, &damageApplyFailed](Zone& zone)
 					{
-						zone.takeDamageAll(damageAmount);
+						if (zone.takeDamageAll(damageAmount) == false)
+						{
+							damageApplyFailed.store(true, std::memory_order_relaxed);
+						}
 					});
 			}
 
@@ -135,7 +145,9 @@ namespace zonejobscheduler::tests
 			scheduler.shutDown();
 			threadPool.join();
 
-			const bool passed = validationAccepted && allActorsHaveExpectedHp.load(std::memory_order_relaxed);
+			const bool passed = validationAccepted
+				&& allActorsHaveExpectedHp.load(std::memory_order_relaxed)
+				&& damageApplyFailed.load(std::memory_order_relaxed) == false;
 
 			std::cout
 				<< "All actors have expected HP: "

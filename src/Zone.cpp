@@ -25,12 +25,23 @@ JobQueue& Zone::getJobQueue()
 	return m_jobQueue;
 }
 
-void Zone::takeDamageAll(int damage)
+bool Zone::takeDamageAll(int damage)
 {
+	if (damage < 0)
+	{
+		// 잘못된 값이면 첫 액터부터 변경하지 않는다.
+		return false;
+	}
+
 	for (auto& actor : m_actors)
 	{
-		actor.takeDamage(damage);
+		if (actor.takeDamage(damage) == false)
+		{
+			return false;
+		}
 	}
+
+	return true;
 }
 
 bool Zone::trySchedule()
