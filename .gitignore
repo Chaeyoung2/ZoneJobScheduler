@@ -64,6 +64,12 @@ Thumbs.db
 
 # vcpkg (if used)
 vcpkg_installed/
-CLAUDE.md
-AGENTS.md
 *.bak
+
+# Local AI tool settings
+.claude/
+AGENTS.md
+CLAUDE.md
+
+# Local development notes
+docs/
