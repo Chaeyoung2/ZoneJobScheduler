@@ -48,6 +48,40 @@ Producer ── submit(zoneId, Job) ──► ZoneScheduler
 - submitter의 첫 Job 접수 후 shutdown을 시작해 **접수 수와 실행 수가 같은지**, 종료 후 제출이 거부되는지 확인
 - 명시적 shutdown·join 없이도 소멸자가 Thread를 정리하고 제출된 Job 200개를 실행하는지 확인
 
+## 성능 측정
+
+[`bench/SchedulerBenchmark.cpp`](bench/SchedulerBenchmark.cpp)는 Worker 수에 따른 처리량을 측정합니다. 바꾸는 변수는 Worker 수(1/2/4/8) 하나이며, 나머지 조건은 고정합니다.
+
+- Zone 8개, 제출 Thread 4개가 Job을 Zone에 번갈아 제출합니다. Zone 수를 최대 Worker 수 이상으로 두어, 같은 Zone 직렬 규칙 때문에 Worker가 노는 상황을 배제했습니다.
+- Job 종류는 두 가지입니다. **빈 Job**은 Job 하나당 스케줄러 비용을, **약 1µs 계산 Job**은 게임 로직이 있을 때의 확장성을 봅니다.
+- ThreadPool 생성은 측정 구간에서 제외하고, 제출 시작부터 모든 Job 실행과 Worker 종료(`join`)까지를 `steady_clock`으로 잽니다.
+- Release 빌드에서 warm-up 1회를 버리고 5회 측정한 중앙값을 사용합니다. 실행된 Job 수는 측정 구간 밖에서 확인합니다.
+
+### 결과
+
+MSVC Release, 16 논리 스레드 환경에서 측정했습니다.
+
+| Workers | Job | Jobs | Median(ms) | Jobs/s | ns/job |
+|---|---|---|---|---|---|
+| 1 | empty | 1,000,000 | 80.3 | 12,455,906 | 80.3 |
+| 2 | empty | 1,000,000 | 105.1 | 9,517,763 | 105.1 |
+| 4 | empty | 1,000,000 | 136.7 | 7,315,733 | 136.7 |
+| 8 | empty | 1,000,000 | 200.5 | 4,987,865 | 200.5 |
+| 1 | ~1µs | 200,000 | 184.7 | 1,082,727 | 923.6 |
+| 2 | ~1µs | 200,000 | 93.2 | 2,146,704 | 465.8 |
+| 4 | ~1µs | 200,000 | 47.1 | 4,243,077 | 235.7 |
+| 8 | ~1µs | 200,000 | 25.4 | 7,885,005 | 126.8 |
+
+- **약 1µs Job:** Worker 1 → 8에서 처리량이 7.3배 증가해 거의 선형으로 확장됩니다. Job 비용이 µs 단위이면 스케줄러 비용이 전체 시간에서 작은 비중을 차지합니다.
+- **빈 Job:** Worker가 늘수록 Job당 시간이 80ns → 200ns로 늘어납니다. Job이 비어 있으면 큐가 바로 비워져 Zone 해제·재등록·Worker 깨우기가 자주 반복되고, 여러 Thread가 같은 JobQueue mutex와 `m_isScheduled`, ReadyQueue를 두고 경합하는 비용이 드러나는 것으로 추정합니다. 이 원인은 프로파일러로 확인하지 않았습니다.
+
+### 측정 시 주의한 점
+
+- **측정 장치의 경합 제거:** 실행 수와 계산 결과는 Zone별 카운터에 기록합니다. 같은 Zone의 Job은 동시에 실행되지 않으므로 atomic이 필요 없습니다. 공유 atomic 하나를 쓰면 스케줄러가 아니라 그 atomic의 경합을 측정하게 됩니다.
+- **False sharing 방지:** Zone별 카운터를 `alignas(64)`로 캐시 라인마다 분리했습니다. 정렬하지 않으면 서로 다른 Zone을 처리하는 Worker들이 같은 캐시 라인을 번갈아 점유해 측정값이 왜곡됩니다.
+- **계산 제거 방지:** 계산 결과를 누적해 마지막에 checksum으로 출력합니다. 결과를 사용하지 않으면 Release 최적화가 계산 루프를 제거해 1µs Job이 빈 Job이 됩니다.
+- **보정과 측정의 코드 일치:** 1µs에 해당하는 반복 횟수를 처음에는 상수 반복 횟수로 보정했더니, 실제 Job이 약 2µs 걸렸습니다(보정 2591회/µs, 실측 2008ns). 어셈블리를 확인한 결과, 반복 횟수가 컴파일 시점에 알려진 보정 코드에서는 MSVC가 두 반복을 `v·a² + (a·c + c)` 한 번으로 합쳐 절반만 반복했고, 반복 횟수가 실행 중에 정해지는 실제 Job에서는 그렇지 않았습니다. 보정 반복 횟수를 `volatile` 변수로 읽어 두 경로가 같은 기계어로 컴파일되게 했고, 이후 보정 1172회/µs에 실측 약 0.92µs로 맞았습니다.
+
 ## 범위와 한계
 
 이 저장소는 Zone 단위 실행 모델을 검증하는 기술 데모로, 네트워크·DB·게임 콘텐츠나 Cross-Zone 상태 변경은 구현하지 않습니다.
@@ -55,7 +89,7 @@ Producer ── submit(zoneId, Job) ──► ZoneScheduler
 - Worker는 선택한 Zone의 JobQueue가 빌 때까지 처리합니다. Job이 계속 들어오는 Hot Zone은 다른 Zone의 대기 시간을 늘릴 수 있으며, 공정성 제한은 구현하지 않았습니다.
 - Job은 예외를 Worker 밖으로 전달하지 않는다는 계약을 전제로 합니다. 처리되지 않은 예외에 대한 복구·격리 정책은 없습니다.
 - Zone 간 공유 상태까지 자동으로 보호하지는 않습니다. Zone은 Scheduler가 소유하며, Worker와 Producer보다 오래 살아 있어야 합니다.
-- 테스트는 정확성과 동시 실행 규칙을 확인합니다. 처리량·지연 시간이나 Worker 수별 확장성은 측정하지 않았습니다.
+- 테스트는 정확성과 동시 실행 규칙을 확인합니다. 성능은 Worker 수별 처리량만 측정했으며, Hot Zone에서의 대기 지연과 CPU·메모리 사용량은 아직 측정하지 않았습니다.
 
 ## 프로젝트 구조
 
@@ -63,6 +97,9 @@ Producer ── submit(zoneId, Job) ──► ZoneScheduler
 - [`src/JobQueue.cpp`](src/JobQueue.cpp), [`src/ReadyQueue.cpp`](src/ReadyQueue.cpp): Job 저장과 실행 가능한 Zone 전달
 - [`src/Worker.cpp`](src/Worker.cpp), [`src/ThreadPool.cpp`](src/ThreadPool.cpp): Zone의 Job 실행과 Worker Thread 정리
 - [`tests/SchedulerTest.cpp`](tests/SchedulerTest.cpp): 실행 규칙과 종료 동작 검증
+- [`bench/SchedulerBenchmark.cpp`](bench/SchedulerBenchmark.cpp): Worker 수별 처리량 측정
+
+CMake 타깃은 스케줄러 정적 라이브러리 `ZoneJobSchedulerCore`와, 이를 링크하는 정확성 테스트 `ZoneJobScheduler`, 성능 측정 `SchedulerBenchmark`로 나뉩니다. 측정은 실행 시간이 길고 통과/실패를 판정하지 않으므로 CTest에 등록하지 않았습니다.
 
 ## Build / Run
 
@@ -75,6 +112,13 @@ ctest --test-dir build -C Debug -V
 ```
 
 `ctest -V`가 실행 파일을 실행하고 테스트 출력을 표시합니다. 실행 파일 위치는 CMake generator에 따라 `build/` 또는 `build/Debug/`입니다.
+
+성능 측정은 Release 빌드로 실행합니다.
+
+```powershell
+cmake --build build --config Release
+.\build\Release\SchedulerBenchmark.exe
+```
 
 ## Tech Stack
 
