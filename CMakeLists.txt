@@ -46,7 +46,14 @@ add_executable(SchedulerBenchmark
 
 target_link_libraries(SchedulerBenchmark PRIVATE ZoneJobSchedulerCore)
 
-foreach(target IN ITEMS ZoneJobSchedulerCore ZoneJobScheduler SchedulerBenchmark)
+# Hot Zone 지연 측정 실행 파일 (Release 빌드로 실행)
+add_executable(HotZoneBenchmark
+	bench/HotZoneBenchmark.cpp
+)
+
+target_link_libraries(HotZoneBenchmark PRIVATE ZoneJobSchedulerCore)
+
+foreach(target IN ITEMS ZoneJobSchedulerCore ZoneJobScheduler SchedulerBenchmark HotZoneBenchmark)
     if(MSVC)
         target_compile_options(${target} PRIVATE
             /W4
