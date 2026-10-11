@@ -68,7 +68,14 @@ add_executable(SessionLifetimeRepro
 
 target_link_libraries(SessionLifetimeRepro PRIVATE ZoneJobSchedulerCore)
 
-foreach(target IN ITEMS ZoneJobSchedulerCore ZoneJobScheduler SchedulerBenchmark HotZoneBenchmark SessionLifetimeRepro)
+# 세션 수명 해결 확인 실행 파일 (CTest 등록, ASan 빌드에서도 실행)
+add_executable(SessionLifetimeTest
+	tests/SessionLifetimeTest.cpp
+)
+
+target_link_libraries(SessionLifetimeTest PRIVATE ZoneJobSchedulerCore)
+
+foreach(target IN ITEMS ZoneJobSchedulerCore ZoneJobScheduler SchedulerBenchmark HotZoneBenchmark SessionLifetimeRepro SessionLifetimeTest)
 
 if(MSVC)
         target_compile_options(${target} PRIVATE
@@ -90,4 +97,9 @@ enable_testing()
 add_test(
     NAME ZoneJobSchedulerCorrectness
     COMMAND ZoneJobScheduler
+)
+
+add_test(
+    NAME SessionLifetime
+    COMMAND SessionLifetimeTest
 )
