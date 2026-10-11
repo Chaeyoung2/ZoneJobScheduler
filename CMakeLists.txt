@@ -6,6 +6,14 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+option(ZJS_ENABLE_ASAN "Build with AddressSanitizer" OFF)
+
+if(ZJS_ENABLE_ASAN AND MSVC)
+	add_compile_options(/fsanitize=address)
+	string(REPLACE "/RTC1" "" CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG}")
+	add_link_options(/INCREMENTAL:NO)
+endif()
+
 # 스케줄러 코어: 테스트·측정·(향후) 서버 실행 파일이 함께 링크한다.
 add_library(ZoneJobSchedulerCore STATIC
 	src/Actor.cpp
@@ -53,8 +61,16 @@ add_executable(HotZoneBenchmark
 
 target_link_libraries(HotZoneBenchmark PRIVATE ZoneJobSchedulerCore)
 
-foreach(target IN ITEMS ZoneJobSchedulerCore ZoneJobScheduler SchedulerBenchmark HotZoneBenchmark)
-    if(MSVC)
+# 세션 수명 재현 실행 파일 (ASan 빌드로 실행)
+add_executable(SessionLifetimeRepro
+	tests/SessionLifetimeRepro.cpp
+)
+
+target_link_libraries(SessionLifetimeRepro PRIVATE ZoneJobSchedulerCore)
+
+foreach(target IN ITEMS ZoneJobSchedulerCore ZoneJobScheduler SchedulerBenchmark HotZoneBenchmark SessionLifetimeRepro)
+
+if(MSVC)
         target_compile_options(${target} PRIVATE
             /W4
             /permissive-
