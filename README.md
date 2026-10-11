@@ -48,6 +48,21 @@ Producer ── submit(zoneId, Job) ──► ZoneScheduler
 - submitter의 첫 Job 접수 후 shutdown을 시작해 **접수 수와 실행 수가 같은지**, 종료 후 제출이 거부되는지 확인
 - 명시적 shutdown·join 없이도 소멸자가 Thread를 정리하고 제출된 Job 200개를 실행하는지 확인
 
+### 세션 수명: Job 실행 전 연결이 끊긴 경우
+
+패킷 처리 Job이 Zone 큐에서 기다리는 동안 연결이 끊겨 세션이 삭제되면, 나중에 Worker가 삭제된 세션에 접근합니다(use-after-free). 네트워크 없이 같은 순서를 매번 재현하기 위해 같은 Zone의 FIFO 실행을 이용했습니다. 앞에 대기하는 Job을 넣어 Zone을 붙잡고, 세션 Job을 제출한 뒤 세션을 해제하고, 대기를 풀어 세션 Job을 실행합니다.
+
+| | 수정 전 [`SessionLifetimeRepro`](tests/SessionLifetimeRepro.cpp) | 수정 후 [`SessionLifetimeTest`](tests/SessionLifetimeTest.cpp) |
+|---|---|---|
+| 세션 소유 | `new`/`delete`, Job은 raw pointer 캡처 | `std::shared_ptr` 공동 소유, Job이 지분을 캡처 |
+| 끊김 처리 | `delete session` | 연결 끊김 표시 후 연결 관리 쪽 지분만 해제(`reset`) |
+| 대기 중이던 Job | 해제된 메모리를 읽음 | 끊긴 상태의 세션으로 끝까지 실행(`playerId=42, connected=0`) |
+| ASan 빌드 | `heap-use-after-free` 보고 | 보고 0건, 세션 생성 수 = 소멸 수 (CTest 등록) |
+| 일반 Debug 빌드 | 오류 없이 종료하고 쓰레기 값 출력 | 동일하게 통과 |
+
+- 끊긴 뒤에도 이미 받은 요청은 처리해야 상태가 어긋나지 않으므로, 남은 Job을 건너뛰는 ID 조회 방식 대신 공동 소유를 택했습니다. 끊김 처리 스레드가 Job 종료를 기다리지 않으며, 마지막 지분을 놓는 쪽에서 세션이 소멸합니다.
+- 세션 소멸자는 마지막 지분을 놓은 스레드(이 시나리오에서는 Worker)에서 실행되므로, 특정 스레드를 가정하지 않고 가볍게 유지해야 합니다.
+
 ## 성능 측정
 
 두 가지를 측정합니다. Worker 수에 따른 **처리량**과, Job이 몰린 Zone(Hot Zone)이 있을 때 다른 Zone이 겪는 **대기 지연**입니다.
@@ -129,6 +144,7 @@ MSVC Release, 16 논리 스레드 환경에서 측정했습니다. Zone 1~7의 J
 - Worker는 선택한 Zone의 JobQueue가 빌 때까지 처리합니다. Job이 계속 들어오는 Hot Zone은 Worker 하나를 계속 점유하며, Worker가 1개일 때 다른 Zone이 측정 내내 실행되지 못했습니다(위 Hot Zone 지연 측정). 공정성 제한은 구현하지 않았습니다.
 - Job은 예외를 Worker 밖으로 전달하지 않는다는 계약을 전제로 합니다. 처리되지 않은 예외에 대한 복구·격리 정책은 없습니다.
 - Zone 간 공유 상태까지 자동으로 보호하지는 않습니다. Zone은 Scheduler가 소유하며, Worker와 Producer보다 오래 살아 있어야 합니다.
+- 세션 수명 처리는 실제 소켓 없이 같은 실행 순서를 재현해 검증했습니다. 네트워크 I/O가 진행 중인 세션과 접속·끊김이 동시에 몰리는 경우는 아직 검증하지 않았습니다.
 - 테스트는 정확성과 동시 실행 규칙을 확인합니다. 성능은 Worker 수별 처리량과 Hot Zone 1개·가벼운 부하에서의 대기 지연을 측정했습니다. Hot Zone이 여러 개이거나 다른 Zone의 부하가 무거운 경우, CPU·메모리 사용량은 아직 측정하지 않았습니다.
 
 ## 프로젝트 구조
@@ -137,10 +153,12 @@ MSVC Release, 16 논리 스레드 환경에서 측정했습니다. Zone 1~7의 J
 - [`src/JobQueue.cpp`](src/JobQueue.cpp), [`src/ReadyQueue.cpp`](src/ReadyQueue.cpp): Job 저장과 실행 가능한 Zone 전달
 - [`src/Worker.cpp`](src/Worker.cpp), [`src/ThreadPool.cpp`](src/ThreadPool.cpp): Zone의 Job 실행과 Worker Thread 정리
 - [`tests/SchedulerTest.cpp`](tests/SchedulerTest.cpp): 실행 규칙과 종료 동작 검증
+- [`tests/SessionLifetimeRepro.cpp`](tests/SessionLifetimeRepro.cpp): Job 실행 전 세션 해제로 생기는 use-after-free 재현 (수정 전 기록)
+- [`tests/SessionLifetimeTest.cpp`](tests/SessionLifetimeTest.cpp): 같은 순서에서 공동 소유로 세션 수명을 보장하는지 검증
 - [`bench/SchedulerBenchmark.cpp`](bench/SchedulerBenchmark.cpp): Worker 수별 처리량 측정
 - [`bench/HotZoneBenchmark.cpp`](bench/HotZoneBenchmark.cpp): Hot Zone 유무에 따른 다른 Zone의 대기 지연 측정
 
-CMake 타깃은 스케줄러 정적 라이브러리 `ZoneJobSchedulerCore`와, 이를 링크하는 정확성 테스트 `ZoneJobScheduler`, 성능 측정 `SchedulerBenchmark`·`HotZoneBenchmark`로 나뉩니다. 측정은 실행 시간이 길고 통과/실패를 판정하지 않으므로 CTest에 등록하지 않았습니다.
+CMake 타깃은 스케줄러 정적 라이브러리 `ZoneJobSchedulerCore`와, 이를 링크하는 정확성 테스트 `ZoneJobScheduler`·`SessionLifetimeTest`, 성능 측정 `SchedulerBenchmark`·`HotZoneBenchmark`, 문제 재현 `SessionLifetimeRepro`로 나뉩니다. 측정은 실행 시간이 길고 통과/실패를 판정하지 않으며, 재현 프로그램은 실패(ASan 보고)가 목적이므로 CTest에 등록하지 않았습니다. `ZJS_ENABLE_ASAN=ON`으로 configure하면 모든 타깃을 AddressSanitizer로 빌드합니다.
 
 ## Build / Run
 
@@ -161,6 +179,17 @@ cmake --build build --config Release
 .\build\Release\SchedulerBenchmark.exe
 .\build\Release\HotZoneBenchmark.exe
 ```
+
+세션 수명 검증은 AddressSanitizer 빌드(MSVC)로 별도 폴더에서 실행합니다.
+
+```powershell
+cmake -S . -B build-asan -DZJS_ENABLE_ASAN=ON
+cmake --build build-asan --config Debug
+ctest --test-dir build-asan -C Debug
+.\build-asan\Debug\SessionLifetimeRepro.exe
+```
+
+`SessionLifetimeRepro.exe`는 `heap-use-after-free`를 보고하고 실패 코드로 종료하는 것이 정상입니다.
 
 ## Tech Stack
 
