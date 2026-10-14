@@ -75,7 +75,26 @@ add_executable(SessionLifetimeTest
 
 target_link_libraries(SessionLifetimeTest PRIVATE ZoneJobSchedulerCore)
 
-foreach(target IN ITEMS ZoneJobSchedulerCore ZoneJobScheduler SchedulerBenchmark HotZoneBenchmark SessionLifetimeRepro SessionLifetimeTest)
+# IOCP 네트워크 계층: 스케줄러 코어와 별개 라이브러리 (Zone Job 연결은 과제 4)
+add_library(ServerNetwork STATIC
+	src/IocpServer.cpp
+	src/Session.cpp
+	include/IocpServer.h
+	include/Session.h
+)
+
+target_include_directories(ServerNetwork PUBLIC include)
+target_compile_definitions(ServerNetwork PUBLIC WIN32_LEAN_AND_MEAN NOMINMAX)
+target_link_libraries(ServerNetwork PUBLIC ws2_32)
+
+# IOCP 서버 확인 실행 파일 (CTest 등록)
+add_executable(IocpServerTest
+	tests/IocpServerTest.cpp
+)
+
+target_link_libraries(IocpServerTest PRIVATE ServerNetwork)
+
+foreach(target IN ITEMS ZoneJobSchedulerCore ZoneJobScheduler SchedulerBenchmark HotZoneBenchmark SessionLifetimeRepro SessionLifetimeTest ServerNetwork IocpServerTest)
 
 if(MSVC)
         target_compile_options(${target} PRIVATE
@@ -102,4 +121,9 @@ add_test(
 add_test(
     NAME SessionLifetime
     COMMAND SessionLifetimeTest
+)
+
+add_test(
+    NAME IocpServer
+    COMMAND IocpServerTest
 )
