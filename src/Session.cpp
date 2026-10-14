@@ -3,7 +3,8 @@
 Session::Session(SOCKET socket, std::uint64_t sessionId)
 	: m_socket(socket),
 	m_sessionId(sessionId)
-{}
+{
+}
 
 Session::~Session()
 {
@@ -15,14 +16,13 @@ std::uint64_t Session::getSessionId() const
 	return m_sessionId;
 }
 
-const char* Session::getRecvBuffer() const
+bool Session::isRecvOverlapped(const OVERLAPPED* overlapped) const
 {
-	return m_recvBuffer.data();
+	return overlapped == &m_recvOverlapped;
 }
 
 bool Session::startRecv()
 {
-	// 지난 recv의 결과가 남아 있으면 안 되므로 매번 0으로 초기화한다.
 	m_recvOverlapped = {};
 
 	WSABUF wsaBuf{};
@@ -32,10 +32,44 @@ bool Session::startRecv()
 
 	if (WSARecv(m_socket, &wsaBuf, 1, nullptr, &flags, &m_recvOverlapped, nullptr) == SOCKET_ERROR)
 	{
-		// WSA_IO_PENDING은 "걸렸고 나중에 완료된다"는 뜻이라 실패가 아니다.
 		return WSAGetLastError() == WSA_IO_PENDING;
 	}
 
-	// 즉시 완료되어도 완료 통지는 IOCP로 똑같이 온다.
+	return true;
+}
+
+bool Session::startSend(DWORD length)
+{
+	m_sendLength = length;
+	m_sentBytes = 0;
+	return postSend();
+}
+
+bool Session::onSendCompleted(DWORD transferredBytes)
+{
+	m_sentBytes += transferredBytes;
+
+	if (m_sentBytes < m_sendLength)
+	{
+		return postSend();
+	}
+
+	return startRecv();
+}
+
+bool Session::postSend()
+{
+	m_sendOverlapped = {};
+
+	// 아직 보내지 않은 부분부터 보낸다.
+	WSABUF wsaBuf{};
+	wsaBuf.buf = m_recvBuffer.data() + m_sentBytes;
+	wsaBuf.len = m_sendLength - m_sentBytes;
+
+	if (WSASend(m_socket, &wsaBuf, 1, nullptr, 0, &m_sendOverlapped, nullptr) == SOCKET_ERROR)
+	{
+		return WSAGetLastError() == WSA_IO_PENDING;
+	}
+
 	return true;
 }

@@ -23,6 +23,7 @@ public:
 	std::uint16_t getPort() const;
 	int getClosedSessionCount() const;
 	long long getReceivedBytes() const;
+	long long getSentBytes() const;
 
 private:
 	void acceptLoop();
@@ -42,4 +43,5 @@ private:
 	std::uint64_t m_nextSessionId = 1;
 	std::atomic<int> m_closedSessionCount{ 0 };
 	std::atomic<long long> m_receivedBytes{ 0 };
+	std::atomic<long long> m_sentBytes{ 0 };
 };

@@ -103,6 +103,11 @@ long long IocpServer::getReceivedBytes() const
 	return m_receivedBytes.load();
 }
 
+long long IocpServer::getSentBytes() const
+{
+	return m_sentBytes.load();
+}
+
 void IocpServer::acceptLoop()
 {
 	while (true)
@@ -155,12 +160,22 @@ void IocpServer::networkLoop()
 			continue;
 		}
 
-		m_receivedBytes.fetch_add(transferredBytes);
-		std::printf("[network] session %llu received %lu bytes: %.*s\n",
-			session->getSessionId(), transferredBytes,
-			static_cast<int>(transferredBytes), session->getRecvBuffer());
+		bool isNextIoStarted = false;
 
-		if (session->startRecv() == false)
+		if (session->isRecvOverlapped(overlapped))
+		{
+			// recv 완료: 받은 만큼 그대로 돌려보낸다.
+			m_receivedBytes.fetch_add(transferredBytes);
+			isNextIoStarted = session->startSend(transferredBytes);
+		}
+		else
+		{
+			// send 완료: 남은 걸 마저 보내거나, 다 보냈으면 다시 recv를 건다.
+			m_sentBytes.fetch_add(transferredBytes);
+			isNextIoStarted = session->onSendCompleted(transferredBytes);
+		}
+
+		if (isNextIoStarted == false)
 		{
 			closeSession(session);
 		}

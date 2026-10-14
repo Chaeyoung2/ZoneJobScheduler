@@ -2,15 +2,19 @@
 
 #include <WS2tcpip.h>
 
+#include <atomic>
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
-#include <cstring>
 #include <thread>
+#include <vector>
 
 namespace
 {
 	constexpr int NetworkThreadCount = 2;
+	constexpr int ClientCount = 10;
+	constexpr int MessagesPerClient = 100;
+	constexpr int MaxMessageLength = 10000;
 
 	SOCKET connectTo(std::uint16_t port)
 	{
@@ -48,6 +52,63 @@ namespace
 		}
 		return true;
 	}
+
+	// TCP는 메시지 경계가 없으므로 원하는 바이트 수를 다 받을 때까지 반복한다.
+	bool receiveExactly(SOCKET clientSocket, char* buffer, int length)
+	{
+		int received = 0;
+		while (received < length)
+		{
+			const int result = recv(clientSocket, buffer + received, length - received, 0);
+			if (result <= 0)
+			{
+				return false;
+			}
+			received += result;
+		}
+		return true;
+	}
+
+	int getMessageLength(int clientIndex, int messageIndex)
+	{
+		return 1 + (clientIndex * 31 + messageIndex * 997) % MaxMessageLength;
+	}
+
+	// 메시지를 보내고 같은 바이트가 돌아오는지 확인한다. 일치한 메시지 수를 반환한다.
+	int runEchoClient(std::uint16_t port, int clientIndex)
+	{
+		SOCKET clientSocket = connectTo(port);
+		if (clientSocket == INVALID_SOCKET)
+		{
+			return 0;
+		}
+
+		int matchedCount = 0;
+		std::vector<char> sent;
+		std::vector<char> received;
+
+		for (int i = 0; i < MessagesPerClient; ++i)
+		{
+			const int length = getMessageLength(clientIndex, i);
+			sent.resize(length);
+			received.assign(length, 0);
+			for (int b = 0; b < length; ++b)
+			{
+				sent[b] = static_cast<char>(clientIndex + i + b);
+			}
+
+			if (send(clientSocket, sent.data(), length, 0) != length
+				|| receiveExactly(clientSocket, received.data(), length) == false
+				|| sent != received)
+			{
+				break;
+			}
+			++matchedCount;
+		}
+
+		closesocket(clientSocket);
+		return matchedCount;
+	}
 }
 
 int main()
@@ -61,6 +122,15 @@ int main()
 		return EXIT_FAILURE;
 	}
 
+	long long expectedBytes = 0;
+	for (int c = 0; c < ClientCount; ++c)
+	{
+		for (int i = 0; i < MessagesPerClient; ++i)
+		{
+			expectedBytes += getMessageLength(c, i);
+		}
+	}
+
 	bool passed = false;
 	{
 		IocpServer server(NetworkThreadCount);
@@ -72,21 +142,30 @@ int main()
 		}
 		std::printf("[main] server port=%u\n", server.getPort());
 
-		SOCKET clientSocket = connectTo(server.getPort());
-		if (clientSocket != INVALID_SOCKET)
+		std::atomic<int> totalMatched{ 0 };
 		{
-			const char message[] = "hello";
-			const int length = static_cast<int>(std::strlen(message));
-			send(clientSocket, message, length, 0);
+			std::vector<std::jthread> clients;
+			for (int c = 0; c < ClientCount; ++c)
+			{
+				clients.emplace_back([&totalMatched, port = server.getPort(), c]()
+					{
+						totalMatched.fetch_add(runEchoClient(port, c));
+					});
+			}
+		} // jthread 소멸 시 join
 
-			closesocket(clientSocket);
+		const bool closed = waitForClosedSessions(server, ClientCount);
+		const int expectedMessages = ClientCount * MessagesPerClient;
 
-			const bool closed = waitForClosedSessions(server, 1);
-			std::printf("[main] closed sessions=%d, received bytes=%lld\n",
-				server.getClosedSessionCount(), server.getReceivedBytes());
+		std::printf("[main] echo matched=%d/%d\n", totalMatched.load(), expectedMessages);
+		std::printf("[main] server received=%lld, sent=%lld, expected=%lld bytes\n",
+			server.getReceivedBytes(), server.getSentBytes(), expectedBytes);
+		std::printf("[main] closed sessions=%d/%d\n", server.getClosedSessionCount(), ClientCount);
 
-			passed = closed && server.getReceivedBytes() == length;
-		}
+		passed = closed
+			&& totalMatched.load() == expectedMessages
+			&& server.getReceivedBytes() == expectedBytes
+			&& server.getSentBytes() == expectedBytes;
 
 		server.stop();
 	}
