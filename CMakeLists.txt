@@ -94,7 +94,14 @@ add_executable(IocpServerTest
 
 target_link_libraries(IocpServerTest PRIVATE ServerNetwork)
 
-foreach(target IN ITEMS ZoneJobSchedulerCore ZoneJobScheduler SchedulerBenchmark HotZoneBenchmark SessionLifetimeRepro SessionLifetimeTest ServerNetwork IocpServerTest)
+# 연결된 채 서버 종료 시 세션 정리 확인 실행 파일 (CTest 등록, ASan 빌드에서도 실행)
+add_executable(IocpShutdownTest
+	tests/IocpShutdownTest.cpp
+)
+
+target_link_libraries(IocpShutdownTest PRIVATE ServerNetwork)
+
+foreach(target IN ITEMS ZoneJobSchedulerCore ZoneJobScheduler SchedulerBenchmark HotZoneBenchmark SessionLifetimeRepro SessionLifetimeTest ServerNetwork IocpServerTest IocpShutdownTest)
 
 if(MSVC)
         target_compile_options(${target} PRIVATE
@@ -126,4 +133,9 @@ add_test(
 add_test(
     NAME IocpServer
     COMMAND IocpServerTest
+)
+
+add_test(
+    NAME IocpShutdown
+    COMMAND IocpShutdownTest
 )
