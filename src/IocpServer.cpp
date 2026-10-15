@@ -2,6 +2,7 @@
 #include "Session.h"
 
 #include <WS2tcpip.h>
+#include <chrono>
 #include <cstdio>
 
 IocpServer::IocpServer(int networkThreadCount)
@@ -73,6 +74,28 @@ void IocpServer::stop()
 	m_listenSocket = INVALID_SOCKET;
 	m_acceptThread.join();
 
+	// 남은 세션의 소켓을 닫는다. 지우지는 않는다.
+	// 걸려 있던 I/O가 실패로 완료되면 네트워크 스레드가 그 I/O의 지분을 놓는다.
+	std::vector<std::shared_ptr<Session>> remaining;
+	{
+		std::lock_guard lock(m_sessionsMutex);
+		for (auto& [sessionId, session] : m_sessions)
+		{
+			remaining.push_back(session);
+		}
+	}
+	for (auto& session : remaining)
+	{
+		closeSession(*session);
+	}
+	remaining.clear();
+
+	// 마지막 완료까지 처리되어 모든 세션이 소멸한 뒤에 네트워크 스레드를 끝낸다.
+	while (m_liveSessionCount.load() > 0)
+	{
+		std::this_thread::sleep_for(std::chrono::milliseconds(1));
+	}
+
 	for (int i = 0; i < m_networkThreadCount; ++i)
 	{
 		PostQueuedCompletionStatus(m_iocp, 0, 0, nullptr);
@@ -91,6 +114,11 @@ void IocpServer::stop()
 std::uint16_t IocpServer::getPort() const
 {
 	return m_port;
+}
+
+int IocpServer::getLiveSessionCount() const
+{
+	return m_liveSessionCount.load();
 }
 
 int IocpServer::getClosedSessionCount() const
@@ -118,20 +146,26 @@ void IocpServer::acceptLoop()
 			break;
 		}
 
-		Session* session = new Session(clientSocket, m_nextSessionId++);
+		auto session = std::make_shared<Session>(clientSocket, m_nextSessionId++, m_liveSessionCount);
 
+		// completion key에는 shared_ptr을 담을 수 없어 주소만 넘긴다.
+		// 그 주소의 세션은 걸려 있는 I/O의 지분이 살려 둔다.
 		if (CreateIoCompletionPort(reinterpret_cast<HANDLE>(clientSocket), m_iocp,
-			reinterpret_cast<ULONG_PTR>(session), 0) == nullptr)
+			reinterpret_cast<ULONG_PTR>(session.get()), 0) == nullptr)
 		{
-			delete session;
 			continue;
+		}
+
+		{
+			std::lock_guard lock(m_sessionsMutex);
+			m_sessions.emplace(session->getSessionId(), session);
 		}
 
 		std::printf("[accept] session %llu connected\n", session->getSessionId());
 
 		if (session->startRecv() == false)
 		{
-			closeSession(session);
+			closeSession(*session);
 		}
 	}
 }
@@ -154,9 +188,13 @@ void IocpServer::networkLoop()
 
 		Session* session = reinterpret_cast<Session*>(completionKey);
 
+		// 완료된 I/O의 지분을 넘겨받는다. 이 반복이 끝날 때까지 세션이 살아 있고,
+		// 다음 I/O를 걸지 않았다면 반복이 끝날 때 마지막 지분이 사라져 세션이 소멸한다.
+		std::shared_ptr<Session> owner = session->releaseIoOwner(overlapped);
+
 		if (succeeded == FALSE || transferredBytes == 0)
 		{
-			closeSession(session);
+			closeSession(*session);
 			continue;
 		}
 
@@ -177,14 +215,25 @@ void IocpServer::networkLoop()
 
 		if (isNextIoStarted == false)
 		{
-			closeSession(session);
+			closeSession(*session);
 		}
 	}
 }
 
-void IocpServer::closeSession(Session* session)
+void IocpServer::closeSession(Session& session)
 {
-	std::printf("[network] session %llu closed\n", session->getSessionId());
-	delete session;
+	// 이미 다른 곳에서 닫았으면 아무것도 하지 않는다.
+	if (session.close() == false)
+	{
+		return;
+	}
+
+	std::printf("[network] session %llu closed\n", session.getSessionId());
+
+	// 서버의 지분을 놓는다. 호출한 쪽이 지분을 쥐고 있으므로 여기서 소멸하지는 않는다.
+	{
+		std::lock_guard lock(m_sessionsMutex);
+		m_sessions.erase(session.getSessionId());
+	}
 	m_closedSessionCount.fetch_add(1);
 }

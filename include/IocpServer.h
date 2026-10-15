@@ -3,7 +3,10 @@
 
 #include <atomic>
 #include <cstdint>
+#include <memory>
+#include <mutex>
 #include <thread>
+#include <unordered_map>
 #include <vector>
 
 class Session;
@@ -21,14 +24,16 @@ public:
 	void stop();
 
 	std::uint16_t getPort() const;
-	int getClosedSessionCount() const;
 	long long getReceivedBytes() const;
 	long long getSentBytes() const;
+
+	int getClosedSessionCount() const;
+	int getLiveSessionCount() const;
 
 private:
 	void acceptLoop();
 	void networkLoop();
-	void closeSession(Session* session);
+	void closeSession(Session& session);
 
 	int m_networkThreadCount;
 	bool m_isStarted = false;
@@ -41,6 +46,12 @@ private:
 	std::vector<std::thread> m_networkThreads;
 
 	std::uint64_t m_nextSessionId = 1;
+
+	// 서버가 쥐는 지분: 종료할 때 남은 세션을 찾아 닫기 위한 목록
+	std::mutex m_sessionsMutex;
+	std::unordered_map<std::uint64_t, std::shared_ptr<Session>> m_sessions;
+
+	std::atomic<int> m_liveSessionCount{ 0 };
 	std::atomic<int> m_closedSessionCount{ 0 };
 	std::atomic<long long> m_receivedBytes{ 0 };
 	std::atomic<long long> m_sentBytes{ 0 };
