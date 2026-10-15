@@ -63,6 +63,26 @@ Producer ── submit(zoneId, Job) ──► ZoneScheduler
 - 끊긴 뒤에도 이미 받은 요청은 처리해야 상태가 어긋나지 않으므로, 남은 Job을 건너뛰는 ID 조회 방식 대신 공동 소유를 택했습니다. 끊김 처리 스레드가 Job 종료를 기다리지 않으며, 마지막 지분을 놓는 쪽에서 세션이 소멸합니다.
 - 세션 소멸자는 마지막 지분을 놓은 스레드(이 시나리오에서는 Worker)에서 실행되므로, 특정 스레드를 가정하지 않고 가볍게 유지해야 합니다.
 
+### 세션 수명: I/O가 걸린 채 서버를 종료하는 경우
+
+IOCP 에코 서버([`src/IocpServer.cpp`](src/IocpServer.cpp), [`src/Session.cpp`](src/Session.cpp))는 세션마다 recv나 send를 하나 걸어 두고, 완료 통지를 받은 네트워크 스레드가 다음 I/O를 겁니다. 완료 통지에는 세션 주소(completion key)만 담겨 옵니다. 따라서 OS가 I/O를 돌려주기 전에 세션을 지우면, 완료를 처리하는 스레드가 해제된 메모리에 접근합니다.
+
+시나리오: 클라이언트가 에코를 한 번 마친 뒤 연결을 유지하고(서버는 다음 recv를 걸어 둔 상태), 서버가 `stop()`을 호출합니다.
+
+| | 수정 전 | 검토 후 기각한 안 | 수정 후 [`IocpShutdownTest`](tests/IocpShutdownTest.cpp) |
+|---|---|---|---|
+| 세션 정리 방식 | `new`/`delete`, 실패 완료를 받을 때만 `delete` | 서버가 세션 목록(mutex 보호)을 갖고 `stop()`에서 바로 `delete` | 걸린 I/O와 서버 목록이 `std::shared_ptr` 지분을 쥐고, `stop()`은 소켓만 닫음 |
+| 클라이언트 수 | 1 | 1 | 10 |
+| 결과 | 정리된 세션 0/1, Debug CRT가 세션 크기(4,184 B) 블록 누수 보고 | 닫힌 소켓의 recv가 실패로 완료되어 해제된 주소로 돌아오고, 같은 세션을 한 번 더 닫음 | closed 10/10, 살아 있는 세션 0 |
+| ASan 빌드 | (MSVC ASan은 누수를 검사하지 않음) | `heap-use-after-free` 3회 중 3회 | 보고 0건, 100회 반복 통과 (CTest 등록) |
+
+수정 전과 기각한 안은 별도 재현 프로그램으로 측정했으며, 이 재현 프로그램은 저장소에 포함하지 않았습니다.
+
+- **지분 규칙:** I/O를 걸기 직전에 `shared_from_this()`로 지분을 쥐고, 완료를 처리하는 스레드가 `releaseIoOwner()`로 그 지분을 넘겨받습니다. completion key의 주소는 완료를 처리할 때만 쓰이고, 완료가 올 I/O는 반드시 지분을 쥐고 있습니다. 따라서 그 주소는 항상 살아 있는 세션을 가리킵니다. I/O가 바로 실패해 걸리지 않으면 완료도 오지 않으므로 쥔 지분을 즉시 돌려놓습니다.
+- **mutex만으로 부족한 이유:** 완료 통지의 주소는 목록에서 꺼낸 값이 아니라 OS가 돌려준 값입니다. 해제된 주소인지 확인할 방법이 없으므로, 세션이 소멸하는 시점을 마지막 완료 이후로 미루는 공동 소유를 택했습니다.
+- **중복 닫기 방지:** `stop()`과 네트워크 스레드가 같은 세션을 동시에 닫을 수 있으므로, 소켓 값을 atomic `exchange`로 한 번만 꺼내 닫습니다.
+- **종료 순서:** `stop()`은 모든 세션이 소멸할 때까지 기다린 뒤 네트워크 스레드를 끝냅니다. 스레드를 먼저 끝내면 소켓을 닫아 생긴 실패 완료를 처리할 스레드가 없어 지분이 남습니다.
+
 ## 성능 측정
 
 두 가지를 측정합니다. Worker 수에 따른 **처리량**과, Job이 몰린 Zone(Hot Zone)이 있을 때 다른 Zone이 겪는 **대기 지연**입니다.
@@ -139,12 +159,12 @@ MSVC Release, 16 논리 스레드 환경에서 측정했습니다. Zone 1~7의 J
 
 ## 범위와 한계
 
-이 저장소는 Zone 단위 실행 모델을 검증하는 기술 데모로, 네트워크·DB·게임 콘텐츠나 Cross-Zone 상태 변경은 구현하지 않습니다.
+이 저장소는 Zone 단위 실행 모델을 검증하는 기술 데모로, DB·게임 콘텐츠나 Cross-Zone 상태 변경은 구현하지 않습니다. 네트워크는 IOCP 에코 서버까지 구현했으며, 패킷 조립·send 큐·패킷을 Zone Job으로 전달하는 연결은 아직 없습니다.
 
 - Worker는 선택한 Zone의 JobQueue가 빌 때까지 처리합니다. Job이 계속 들어오는 Hot Zone은 Worker 하나를 계속 점유하며, Worker가 1개일 때 다른 Zone이 측정 내내 실행되지 못했습니다(위 Hot Zone 지연 측정). 공정성 제한은 구현하지 않았습니다.
 - Job은 예외를 Worker 밖으로 전달하지 않는다는 계약을 전제로 합니다. 처리되지 않은 예외에 대한 복구·격리 정책은 없습니다.
 - Zone 간 공유 상태까지 자동으로 보호하지는 않습니다. Zone은 Scheduler가 소유하며, Worker와 Producer보다 오래 살아 있어야 합니다.
-- 세션 수명 처리는 실제 소켓 없이 같은 실행 순서를 재현해 검증했습니다. 네트워크 I/O가 진행 중인 세션과 접속·끊김이 동시에 몰리는 경우는 아직 검증하지 않았습니다.
+- 세션 수명은 두 경우를 검증했습니다. Job 실행 전 연결이 끊긴 경우(소켓 없이 실행 순서 재현)와, recv가 걸린 채 서버를 종료하는 경우입니다. send가 걸린 채 종료하는 경우와 접속·끊김이 동시에 몰리는 경우는 검증하지 않았습니다. `stop()`의 세션 소멸 대기에는 시간 제한이 없습니다. I/O 지분을 스레드 간에 넘기는 순서는 IOCP의 완료 순서 보장에 기대며, MSVC에서 데이터 경합 검사 도구(TSan)를 쓸 수 없어 반복 실행으로만 확인했습니다.
 - 테스트는 정확성과 동시 실행 규칙을 확인합니다. 성능은 Worker 수별 처리량과 Hot Zone 1개·가벼운 부하에서의 대기 지연을 측정했습니다. Hot Zone이 여러 개이거나 다른 Zone의 부하가 무거운 경우, CPU·메모리 사용량은 아직 측정하지 않았습니다.
 
 ## 프로젝트 구조
@@ -155,10 +175,13 @@ MSVC Release, 16 논리 스레드 환경에서 측정했습니다. Zone 1~7의 J
 - [`tests/SchedulerTest.cpp`](tests/SchedulerTest.cpp): 실행 규칙과 종료 동작 검증
 - [`tests/SessionLifetimeRepro.cpp`](tests/SessionLifetimeRepro.cpp): Job 실행 전 세션 해제로 생기는 use-after-free 재현 (수정 전 기록)
 - [`tests/SessionLifetimeTest.cpp`](tests/SessionLifetimeTest.cpp): 같은 순서에서 공동 소유로 세션 수명을 보장하는지 검증
+- [`src/IocpServer.cpp`](src/IocpServer.cpp), [`src/Session.cpp`](src/Session.cpp): IOCP 에코 서버, I/O별 세션 지분 관리
+- [`tests/IocpServerTest.cpp`](tests/IocpServerTest.cpp): 클라이언트 10개 × 메시지 100개 에코 일치와 송수신 바이트 검증
+- [`tests/IocpShutdownTest.cpp`](tests/IocpShutdownTest.cpp): 연결된 채 서버를 종료해도 세션이 모두 소멸하는지 검증
 - [`bench/SchedulerBenchmark.cpp`](bench/SchedulerBenchmark.cpp): Worker 수별 처리량 측정
 - [`bench/HotZoneBenchmark.cpp`](bench/HotZoneBenchmark.cpp): Hot Zone 유무에 따른 다른 Zone의 대기 지연 측정
 
-CMake 타깃은 스케줄러 정적 라이브러리 `ZoneJobSchedulerCore`와, 이를 링크하는 정확성 테스트 `ZoneJobScheduler`·`SessionLifetimeTest`, 성능 측정 `SchedulerBenchmark`·`HotZoneBenchmark`, 문제 재현 `SessionLifetimeRepro`로 나뉩니다. 측정은 실행 시간이 길고 통과/실패를 판정하지 않으며, 재현 프로그램은 실패(ASan 보고)가 목적이므로 CTest에 등록하지 않았습니다. `ZJS_ENABLE_ASAN=ON`으로 configure하면 모든 타깃을 AddressSanitizer로 빌드합니다.
+CMake 타깃은 스케줄러 정적 라이브러리 `ZoneJobSchedulerCore`와, 이를 링크하는 정확성 테스트 `ZoneJobScheduler`·`SessionLifetimeTest`, 성능 측정 `SchedulerBenchmark`·`HotZoneBenchmark`, 문제 재현 `SessionLifetimeRepro`로 나뉩니다. IOCP 네트워크 계층은 별도 정적 라이브러리 `ServerNetwork`이며, 테스트 `IocpServerTest`·`IocpShutdownTest`가 링크합니다. 측정은 실행 시간이 길고 통과/실패를 판정하지 않으며, 재현 프로그램은 실패(ASan 보고)가 목적이므로 CTest에 등록하지 않았습니다. `ZJS_ENABLE_ASAN=ON`으로 configure하면 모든 타깃을 AddressSanitizer로 빌드합니다.
 
 ## Build / Run
 
