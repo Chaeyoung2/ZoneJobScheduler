@@ -78,8 +78,10 @@ target_link_libraries(SessionLifetimeTest PRIVATE ZoneJobSchedulerCore)
 # IOCP 네트워크 계층: 스케줄러 코어와 별개 라이브러리 (Zone Job 연결은 과제 4)
 add_library(ServerNetwork STATIC
 	src/IocpServer.cpp
+	src/PacketAssembler.cpp
 	src/Session.cpp
 	include/IocpServer.h
+	include/PacketAssembler.h
 	include/Session.h
 )
 
@@ -101,7 +103,15 @@ add_executable(IocpShutdownTest
 
 target_link_libraries(IocpShutdownTest PRIVATE ServerNetwork)
 
-foreach(target IN ITEMS ZoneJobSchedulerCore ZoneJobScheduler SchedulerBenchmark HotZoneBenchmark SessionLifetimeRepro SessionLifetimeTest ServerNetwork IocpServerTest IocpShutdownTest)
+# 패킷 조립 확인 실행 파일 (CTest 등록, 네트워크 없이 실행)
+add_executable(PacketAssemblerTest
+	tests/PacketAssemblerTest.cpp
+)
+
+target_link_libraries(PacketAssemblerTest PRIVATE ServerNetwork)
+
+foreach(target IN ITEMS ZoneJobSchedulerCore ZoneJobScheduler SchedulerBenchmark HotZoneBenchmark SessionLifetimeRepro 
+SessionLifetimeTest ServerNetwork IocpServerTest IocpShutdownTest PacketAssemblerTest)
 
 if(MSVC)
         target_compile_options(${target} PRIVATE
@@ -138,4 +148,9 @@ add_test(
 add_test(
     NAME IocpShutdown
     COMMAND IocpShutdownTest
+)
+
+add_test(
+    NAME PacketAssembler
+    COMMAND PacketAssemblerTest
 )
