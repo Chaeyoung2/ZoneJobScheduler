@@ -37,7 +37,7 @@ namespace
 	// 에코 한 번: 끝나면 서버는 다음 recv를 걸어 둔 상태가 된다.
 	bool echoOnce(SOCKET clientSocket)
 	{
-		char message[4] = { 'p', 'i', 'n', 'g' };
+		char message[4] = { 4, 0, 1, 0 };
 		char reply[4] = {};
 		return send(clientSocket, message, 4, 0) == 4
 			&& recv(clientSocket, reply, 4, MSG_WAITALL) == 4;

@@ -1,4 +1,5 @@
 #include "IocpServer.h"
+#include "PacketAssembler.h"
 
 #include <WS2tcpip.h>
 
@@ -6,6 +7,7 @@
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <thread>
 #include <vector>
 
@@ -14,7 +16,8 @@ namespace
 	constexpr int NetworkThreadCount = 2;
 	constexpr int ClientCount = 10;
 	constexpr int MessagesPerClient = 100;
-	constexpr int MaxMessageLength = 10000;
+	constexpr int HeaderSize = static_cast<int>(PacketAssembler::HeaderSize);
+	constexpr int MaxPacketSize = static_cast<int>(PacketAssembler::MaxPacketSize);
 
 	SOCKET connectTo(std::uint16_t port)
 	{
@@ -69,9 +72,10 @@ namespace
 		return true;
 	}
 
+	// 패킷 전체 길이: 헤더 4바이트 + 최대 크기
 	int getMessageLength(int clientIndex, int messageIndex)
 	{
-		return 1 + (clientIndex * 31 + messageIndex * 997) % MaxMessageLength;
+		return HeaderSize + (clientIndex * 31 + messageIndex * 997) % (MaxPacketSize - HeaderSize + 1);
 	}
 
 	// 메시지를 보내고 같은 바이트가 돌아오는지 확인한다. 일치한 메시지 수를 반환한다.
@@ -92,7 +96,12 @@ namespace
 			const int length = getMessageLength(clientIndex, i);
 			sent.resize(length);
 			received.assign(length, 0);
-			for (int b = 0; b < length; ++b)
+			
+			const auto size = static_cast<std::uint16_t>(length);
+			const auto id = static_cast<std::uint16_t>(clientIndex);
+			std::memcpy(sent.data(), &size, sizeof(size));
+			std::memcpy(sent.data() + sizeof(size), &id, sizeof(id));
+			for (int b = HeaderSize; b < length; ++b)
 			{
 				sent[b] = static_cast<char>(clientIndex + i + b);
 			}
@@ -157,15 +166,16 @@ int main()
 		const bool closed = waitForClosedSessions(server, ClientCount);
 		const int expectedMessages = ClientCount * MessagesPerClient;
 
-		std::printf("[main] echo matched=%d/%d\n", totalMatched.load(), expectedMessages);
-		std::printf("[main] server received=%lld, sent=%lld, expected=%lld bytes\n",
-			server.getReceivedBytes(), server.getSentBytes(), expectedBytes);
+		std::printf("[main] server packets=%d/%d, invalid=%d\n",
+		server.getReceivedPacketCount(), expectedMessages, server.getInvalidPacketCount());
 		std::printf("[main] closed sessions=%d/%d\n", server.getClosedSessionCount(), ClientCount);
 
 		passed = closed
 			&& totalMatched.load() == expectedMessages
 			&& server.getReceivedBytes() == expectedBytes
-			&& server.getSentBytes() == expectedBytes;
+			&& server.getSentBytes() == expectedBytes
+			&& server.getReceivedPacketCount() == expectedMessages
+			&& server.getInvalidPacketCount() == 0;
 
 		server.stop();
 	}
