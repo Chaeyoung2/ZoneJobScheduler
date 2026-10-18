@@ -27,12 +27,15 @@ public:
 	long long getReceivedBytes() const;
 	long long getSentBytes() const;
 
+	int getReceivedPacketCount() const;
+	int getInvalidPacketCount() const;
 	int getClosedSessionCount() const;
 	int getLiveSessionCount() const;
 
 private:
 	void acceptLoop();
 	void networkLoop();
+	bool dispatchPackets(Session& session, DWORD transferredBytes);
 	void closeSession(Session& session);
 
 	int m_networkThreadCount;
@@ -55,4 +58,7 @@ private:
 	std::atomic<int> m_closedSessionCount{ 0 };
 	std::atomic<long long> m_receivedBytes{ 0 };
 	std::atomic<long long> m_sentBytes{ 0 };
+	std::atomic<int> m_receivedPacketCount{ 0 };
+	std::atomic<int> m_invalidPacketCount{ 0 };
+
 };

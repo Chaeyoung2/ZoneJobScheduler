@@ -1,5 +1,6 @@
 #pragma once
 #include <WinSock2.h>
+#include "PacketAssembler.h"
 
 #include <array>
 #include <atomic>
@@ -21,6 +22,8 @@ public:
 
 	bool startRecv();
 	bool startSend(DWORD length);
+	void appendReceived(DWORD transferredBytes);
+	PacketAssembler::PopResult tryPopPacket(Packet& packet);
 
 	// send 완료 처리: 보낸 양을 더하고, 남은 게 있으면 이어서 보낸다.
 	bool onSendCompleted(DWORD transferredBytes);
@@ -42,6 +45,7 @@ private:
 
 	OVERLAPPED m_recvOverlapped{};
 	std::array<char, RecvBufferSize> m_recvBuffer{};
+	PacketAssembler m_assembler;
 
 	OVERLAPPED m_sendOverlapped{};
 	DWORD m_sendLength = 0;

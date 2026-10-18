@@ -126,6 +126,16 @@ int IocpServer::getClosedSessionCount() const
 	return m_closedSessionCount.load();
 }
 
+int IocpServer::getReceivedPacketCount() const
+{
+	return m_receivedPacketCount.load();
+}
+
+int IocpServer::getInvalidPacketCount() const
+{
+	return m_invalidPacketCount.load();
+}
+
 long long IocpServer::getReceivedBytes() const
 {
 	return m_receivedBytes.load();
@@ -202,8 +212,13 @@ void IocpServer::networkLoop()
 
 		if (session->isRecvOverlapped(overlapped))
 		{
-			// recv 완료: 받은 만큼 그대로 돌려보낸다.
+			// recv 완료: 패킷을 꺼낸 뒤, 받은 바이트는 그대로 돌려보낸다.
 			m_receivedBytes.fetch_add(transferredBytes);
+			if (dispatchPackets(*session, transferredBytes) == false)
+			{
+				closeSession(*session);
+				continue;
+			}
 			isNextIoStarted = session->startSend(transferredBytes);
 		}
 		else
@@ -217,6 +232,31 @@ void IocpServer::networkLoop()
 		{
 			closeSession(*session);
 		}
+	}
+}
+
+// 받은 바이트를 조립 버퍼에 넣고 완성된 패킷을 모두 꺼낸다.
+bool IocpServer::dispatchPackets(Session& session, DWORD transferredBytes)
+{
+	session.appendReceived(transferredBytes);
+
+	while (true)
+	{
+		Packet packet;
+		const PacketAssembler::PopResult result = session.tryPopPacket(packet);
+		if (result == PacketAssembler::PopResult::NeedMore)
+		{
+			return true;
+		}
+		if (result == PacketAssembler::PopResult::Invalid)
+		{
+			std::printf("[network] session %llu sent invalid packet\n", session.getSessionId());
+			m_invalidPacketCount.fetch_add(1);
+			return false;
+		}
+
+		// 완성된 패킷 하나. Zone Job으로 넘기는 것은 과제 4에서 한다.
+		m_receivedPacketCount.fetch_add(1);
 	}
 }
 

@@ -47,6 +47,16 @@ bool Session::startRecv()
 	return true;
 }
 
+void Session::appendReceived(DWORD transferredBytes)
+{
+	m_assembler.append(m_recvBuffer.data(), transferredBytes);
+}
+
+PacketAssembler::PopResult Session::tryPopPacket(Packet& packet)
+{
+	return m_assembler.tryPop(packet);
+}
+
 bool Session::startSend(DWORD length)
 {
 	m_sendLength = length;
