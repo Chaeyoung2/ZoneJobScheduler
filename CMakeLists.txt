@@ -110,8 +110,15 @@ add_executable(PacketAssemblerTest
 
 target_link_libraries(PacketAssemblerTest PRIVATE ServerNetwork)
 
+# 잘못된 패킷을 보낸 세션을 끊는지 확인 실행 파일 (CTest 등록)
+add_executable(IocpInvalidPacketTest
+	tests/IocpInvalidPacketTest.cpp
+)
+
+target_link_libraries(IocpInvalidPacketTest PRIVATE ServerNetwork)
+
 foreach(target IN ITEMS ZoneJobSchedulerCore ZoneJobScheduler SchedulerBenchmark HotZoneBenchmark SessionLifetimeRepro 
-SessionLifetimeTest ServerNetwork IocpServerTest IocpShutdownTest PacketAssemblerTest)
+SessionLifetimeTest ServerNetwork IocpServerTest IocpShutdownTest PacketAssemblerTest IocpInvalidPacketTest)
 
 if(MSVC)
         target_compile_options(${target} PRIVATE
@@ -153,4 +160,9 @@ add_test(
 add_test(
     NAME PacketAssembler
     COMMAND PacketAssemblerTest
+)
+
+add_test(
+    NAME IocpInvalidPacket
+    COMMAND IocpInvalidPacketTest
 )
