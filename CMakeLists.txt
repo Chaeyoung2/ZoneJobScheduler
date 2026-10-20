@@ -117,8 +117,16 @@ add_executable(IocpInvalidPacketTest
 
 target_link_libraries(IocpInvalidPacketTest PRIVATE ServerNetwork)
 
+# 패킷 여러 개를 한 번에 보내 send 큐를 확인하는 실행 파일 (CTest 등록)
+add_executable(IocpBurstTest
+	tests/IocpBurstTest.cpp
+)
+
+target_link_libraries(IocpBurstTest PRIVATE ServerNetwork)
+
 foreach(target IN ITEMS ZoneJobSchedulerCore ZoneJobScheduler SchedulerBenchmark HotZoneBenchmark SessionLifetimeRepro 
-SessionLifetimeTest ServerNetwork IocpServerTest IocpShutdownTest PacketAssemblerTest IocpInvalidPacketTest)
+SessionLifetimeTest ServerNetwork IocpServerTest IocpShutdownTest PacketAssemblerTest IocpInvalidPacketTest
+IocpBurstTest)
 
 if(MSVC)
         target_compile_options(${target} PRIVATE
@@ -165,4 +173,9 @@ add_test(
 add_test(
     NAME IocpInvalidPacket
     COMMAND IocpInvalidPacketTest
+)
+
+add_test(
+    NAME IocpBurst
+    COMMAND IocpBurstTest
 )
