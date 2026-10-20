@@ -57,23 +57,44 @@ PacketAssembler::PopResult Session::tryPopPacket(Packet& packet)
 	return m_assembler.tryPop(packet);
 }
 
-bool Session::startSend(DWORD length)
+bool Session::send(std::vector<char> data)
 {
-	m_sendLength = length;
+	std::lock_guard lock(m_sendMutex);
+	m_sendQueue.push_back(std::move(data));
+
+	// 이미 걸린 send가 있으면 줄만 세워둔다. 완료되면 다음 send를 이어서 보낸다.
+	if(m_isSending)
+	{
+		return true;
+	}
+
+	m_isSending = true;
 	m_sentBytes = 0;
 	return postSend();
 }
 
 bool Session::onSendCompleted(DWORD transferredBytes)
 {
+	std::lock_guard lock(m_sendMutex);
 	m_sentBytes += transferredBytes;
 
-	if (m_sentBytes < m_sendLength)
+	// 맨 앞 데이터를 다 못 보냈으면 남은 부분을 보낸다.
+	if (m_sentBytes < m_sendQueue.front().size())
 	{
 		return postSend();
 	}
 
-	return startRecv();
+	m_sendQueue.pop_front();
+	m_sentBytes = 0;
+
+	// 큐가 비었으면 보내고 있는 상태를 해제한다. 다음 send()가 다시 건다.
+	if (m_sendQueue.empty())
+	{
+		m_isSending = false;
+		return true;
+	}
+
+	return postSend();
 }
 
 std::shared_ptr<Session> Session::releaseIoOwner(const OVERLAPPED* overlapped)
@@ -101,10 +122,11 @@ bool Session::postSend()
 {
 	m_sendOverlapped = {};
 
-	// 아직 보내지 않은 부분부터 보낸다.
+	// 큐 맨 앞 데이터에서 아직 보내지 않은 부분부터 보낸다.
+	std::vector<char>& data = m_sendQueue.front();
 	WSABUF wsaBuf{};
-	wsaBuf.buf = m_recvBuffer.data() + m_sentBytes;
-	wsaBuf.len = m_sendLength - m_sentBytes;
+	wsaBuf.buf = data.data() + m_sentBytes;
+	wsaBuf.len = static_cast<ULONG>(data.size() - m_sentBytes);
 
 	m_sendOwner = shared_from_this();
 

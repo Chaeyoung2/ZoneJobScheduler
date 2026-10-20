@@ -5,7 +5,10 @@
 #include <array>
 #include <atomic>
 #include <cstdint>
+#include <deque>
 #include <memory>
+#include <mutex>
+#include <vector>
 
 class Session : public std::enable_shared_from_this<Session>
 {
@@ -21,7 +24,7 @@ public:
 	bool isRecvOverlapped(const OVERLAPPED* overlapped) const;
 
 	bool startRecv();
-	bool startSend(DWORD length);
+	bool send(std::vector<char> data);
 	void appendReceived(DWORD transferredBytes);
 	PacketAssembler::PopResult tryPopPacket(Packet& packet);
 
@@ -47,9 +50,13 @@ private:
 	std::array<char, RecvBufferSize> m_recvBuffer{};
 	PacketAssembler m_assembler;
 
-	OVERLAPPED m_sendOverlapped{};
-	DWORD m_sendLength = 0;
+	// mutex가 아래 셋을 보호한다.
+	std::mutex m_sendMutex;
+	std::deque<std::vector<char>> m_sendQueue;
+	bool m_isSending = false;
 	DWORD m_sentBytes = 0;
+
+	OVERLAPPED m_sendOverlapped{};
 
 	// 걸려 있는 I/O가 쥐는 지분. 완료되면 releaseIoOwner로 넘겨준다.
 	std::shared_ptr<Session> m_recvOwner;

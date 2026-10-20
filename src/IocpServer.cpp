@@ -2,8 +2,10 @@
 #include "Session.h"
 
 #include <WS2tcpip.h>
+#include <algorithm>
 #include <chrono>
 #include <cstdio>
+#include <cstring>
 
 IocpServer::IocpServer(int networkThreadCount)
 	: m_networkThreadCount(networkThreadCount)
@@ -212,18 +214,18 @@ void IocpServer::networkLoop()
 
 		if (session->isRecvOverlapped(overlapped))
 		{
-			// recv 완료: 패킷을 꺼낸 뒤, 받은 바이트는 그대로 돌려보낸다.
+			// recv 완료: 패킷마다 응답을 send 큐에 넣고, 바로 다음 recv를 건다.
 			m_receivedBytes.fetch_add(transferredBytes);
 			if (dispatchPackets(*session, transferredBytes) == false)
 			{
 				closeSession(*session);
 				continue;
 			}
-			isNextIoStarted = session->startSend(transferredBytes);
+			isNextIoStarted = session->startRecv();
 		}
 		else
 		{
-			// send 완료: 남은 걸 마저 보내거나, 다 보냈으면 다시 recv를 건다.
+			// send 완료: 남은 부분이나 큐의 다음 데이터를 보낸다. recv와는 상관없다.
 			m_sentBytes.fetch_add(transferredBytes);
 			isNextIoStarted = session->onSendCompleted(transferredBytes);
 		}
@@ -232,6 +234,20 @@ void IocpServer::networkLoop()
 		{
 			closeSession(*session);
 		}
+	}
+}
+
+namespace
+{
+	// 패킷을 [size 2 | id 2 | 본문] 바이트로 만든다.
+	std::vector<char> serializePacket(const Packet& packet)
+	{
+		const auto size = static_cast<std::uint16_t>(PacketAssembler::HeaderSize + packet.body.size());
+		std::vector<char> data(size);
+		std::memcpy(data.data(), &size, sizeof(size));
+		std::memcpy(data.data() + sizeof(size), &packet.id, sizeof(packet.id));
+		std::copy(packet.body.begin(), packet.body.end(), data.begin() + PacketAssembler::HeaderSize);
+		return data;
 	}
 }
 
@@ -257,6 +273,12 @@ bool IocpServer::dispatchPackets(Session& session, DWORD transferredBytes)
 
 		// 완성된 패킷 하나. Zone Job으로 넘기는 것은 과제 4에서 한다.
 		m_receivedPacketCount.fetch_add(1);
+
+		// 패킷 단위 에코
+		if (session.send(serializePacket(packet)) == false)
+		{
+			return false;
+		}
 	}
 }
 
