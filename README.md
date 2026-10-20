@@ -1,9 +1,17 @@
 # ZoneJobScheduler
 
-같은 게임 상태를 다루는 Job의 동시 실행을 막기 위해 Zone을 작업 분배 단위로 만든 C++20 멀티스레드 Job Scheduler 데모입니다.
+여러 Zone(맵·사냥터)을 병렬로 처리하는 MMORPG 방식 TCP 게임 서버를 만들고 있습니다. C++20, Windows IOCP 기반입니다.
 
-- **같은 Zone:** JobQueue에 등록된 순서대로, 한 번에 한 Worker가 직렬 실행
-- **서로 다른 Zone:** 여러 Worker에서 병렬 실행 가능
+지금까지 두 부분을 구현했습니다.
+
+1. **Zone Job 스케줄러:** 게임 로직을 Zone 단위 Job으로 실행합니다.
+   - **같은 Zone:** JobQueue에 등록된 순서대로, 한 번에 한 Worker가 직렬 실행
+   - **서로 다른 Zone:** 여러 Worker에서 병렬 실행 가능
+2. **IOCP 네트워크 계층:** 연결 수락, 패킷 조립, 세션별 send 큐, I/O별 세션 수명 관리.
+   - 현재는 받은 패킷을 그대로 돌려보내는 패킷 단위 에코 서버입니다.
+   - 패킷을 Zone Job으로 넘기는 연결은 아직 없습니다.
+
+스케줄러 구조는 다음과 같습니다.
 
 ```text
 Producer ── submit(zoneId, Job) ──► ZoneScheduler
@@ -22,7 +30,9 @@ Producer ── submit(zoneId, Job) ──► ZoneScheduler
 
 ## 프로젝트 목적
 
-실무에서는 주로 단일 스레드로 실행되는 게임 로직을 다뤘습니다. 여러 Worker가 게임 상태를 나눠 처리할 때 필요한 작업 분배와 동시성 제어를 직접 구현하고 검증하기 위해 만든 개인 기술 데모입니다.
+실무에서는 주로 단일 스레드로 실행되는 게임 로직을 다뤘습니다. 여러 Worker가 게임 상태를 나눠 처리할 때 필요한 작업 분배와 동시성 제어를 직접 구현하고 검증하기 위해 만든 개인 프로젝트입니다.
+
+네트워크 계층은 스케줄러에 실제 요청을 넣는 입구입니다. 멀티스레드에서 생기는 문제(예: Job이 실행되기 전에 세션이 사라지는 경우)를 재현하고, 수정 전후를 테스트로 남기는 것을 목표로 합니다.
 
 ## 작업 처리 흐름
 
@@ -37,9 +47,63 @@ Producer ── submit(zoneId, Job) ──► ZoneScheduler
 - **작업 대기:** ReadyQueue가 비면 Worker는 condition variable에서 기다립니다. Zone 등록 시 `notify_one()`으로 Worker 하나를 깨웁니다.
 - **종료 경계:** `submit()`은 Job 저장과 필요한 ReadyQueue 등록이 끝날 때까지 shared lock을 유지합니다. `shutDown()`은 unique lock으로 새 접수를 막은 뒤 대기 Worker를 깨웁니다. Worker는 이미 등록된 Zone과 Job을 처리하고 종료하며, ThreadPool은 Worker들을 join합니다.
 
+## 네트워크 계층 (IOCP)
+
+```text
+클라이언트 ──TCP──► Session
+                     │ WSARecv 완료
+                     ▼
+               PacketAssembler (세션별 조립 버퍼)
+                     │ 완성된 패킷마다
+                     ▼
+               Session::send() ──► send 큐 ──► WSASend (세션당 하나)
+                                       ▲            │ 완료
+                                       └────────────┘ 다음 데이터
+```
+
+### 스레드와 완료 처리
+
+- **accept 전용 스레드:** 블로킹 `accept`로 연결을 받습니다. 소켓을 IOCP에 등록하고 첫 recv를 겁니다.
+- **네트워크 스레드 N개:** `GetQueuedCompletionStatus`로 끝난 I/O를 꺼냅니다.
+- **세션 찾기:** completion key에는 세션 주소를 넣습니다. recv와 send는 완료된 `OVERLAPPED`의 주소로 구분합니다.
+- **recv와 send는 따로 돕니다.** recv가 완료되면 바로 다음 recv를 겁니다. send는 send 큐가 따로 이어 보냅니다. 그래서 보내는 중에도 계속 받습니다.
+
+### 패킷 조립
+
+TCP에는 메시지 경계가 없습니다. 한 패킷이 recv 여러 번에 쪼개져 오기도 하고, 여러 패킷이 recv 한 번에 붙어 오기도 합니다.
+
+- **형식:** `[size 2바이트 | id 2바이트 | 본문]`. size는 헤더를 포함한 전체 길이입니다.
+- **조립:** 받은 바이트를 세션별 조립 버퍼에 이어 붙입니다. size만큼 모이면 패킷 하나를 꺼냅니다. recv 한 번에 완성된 패킷은 모두 꺼냅니다.
+- **잘못된 패킷:** size가 4보다 작거나 4096보다 크면 세션을 닫습니다.
+- **기각한 안:** 구분자 방식은 본문에 같은 바이트가 들어가면 경계가 깨집니다. 고정 크기 방식은 작은 패킷도 최대 크기를 써야 하고 가변 길이를 담을 수 없습니다.
+- 조립 버퍼는 잠금 없이 씁니다. 세션당 recv가 항상 하나만 걸리므로, 같은 버퍼를 두 스레드가 동시에 고치지 않습니다.
+
+### send 큐
+
+**문제:** 처음에는 recv와 send를 번갈아 걸었습니다. send 상태(`OVERLAPPED`, 길이, 보낸 양)도 세션당 한 벌이었습니다. 이 구조에서 패킷마다 응답을 보내려고 `dispatchPackets`가 패킷마다 send를 걸게 바꿔 보았습니다.
+
+| | 패킷마다 바로 send (기각) | send 큐 (채택) |
+|---|---|---|
+| 동작 | 걸려 있는 send의 `OVERLAPPED`를 덮어씀. send 완료마다 recv를 걸어 recv가 여러 개 걸림 | WSASend는 세션당 하나. 나머지는 큐에서 대기 |
+| 1,004바이트 패킷 100개 일괄 송신 | 서버가 꺼낸 패킷 10/100, 잘못된 패킷으로 판정, 세션 번호가 쓰레기 값 | 응답 100개가 순서대로 일치 |
+| ASan 빌드 | 조립 버퍼에서 `heap-use-after-free` | 보고 0건 (CTest 등록) |
+
+recv가 여러 개 걸리면 네트워크 스레드 두 개가 같은 조립 버퍼를 동시에 고칩니다. 한쪽이 버퍼를 늘리는 사이 다른 쪽이 해제된 메모리를 씁니다. 기각한 안은 별도 실험 코드로 측정했으며 저장소에 포함하지 않았습니다.
+
+- **구조:** 세션마다 `std::deque<std::vector<char>>` 큐, `m_isSending`(WSASend가 걸려 있는가), `m_sentBytes`(맨 앞 데이터 중 보낸 양)를 둡니다. mutex 하나가 셋을 함께 보호합니다.
+- **넣기 (`Session::send`):** 큐에 넣습니다. 걸린 send가 없을 때만 직접 WSASend를 겁니다. 이미 있으면 줄만 섭니다.
+- **완료 (`Session::onSendCompleted`):** 부분 전송이면 남은 부분을 다시 겁니다. 다 보냈으면 맨 앞을 빼고 다음 데이터를 겁니다. 큐가 비면 `m_isSending`을 끕니다.
+- **버퍼 수명:** 보내는 데이터는 완료될 때까지 큐 맨 앞에 남습니다. OS가 쓰는 동안 버퍼가 사라지지 않습니다.
+- **mutex를 둔 이유:** 앞으로 Zone Worker 스레드가 `send`를 부르면, 네트워크 스레드의 완료 처리와 같은 큐를 동시에 고치게 됩니다.
+- **기각한 안:** WSASend를 여러 개 동시에 거는 방식은 건마다 `OVERLAPPED`와 버퍼가 따로 필요합니다. 부분 전송이 나면 바이트 순서가 섞일 수 있습니다.
+
 ## 테스트 및 검증
 
-[`tests/SchedulerTest.cpp`](tests/SchedulerTest.cpp)의 테스트는 다음 조건을 확인하고, 실패하면 실행 파일이 실패 코드로 종료됩니다.
+모든 테스트는 실패하면 실패 코드로 종료되며 CTest에 등록되어 있습니다.
+
+### 스케줄러
+
+[`tests/SchedulerTest.cpp`](tests/SchedulerTest.cpp)는 다음 조건을 확인합니다.
 
 - 여러 Producer가 제출한 **16,000개 Job이 모두 실행**됐는지 확인
 - 데미지 Job 25개 실행 후 Zone의 모든 Actor가 예상 HP 75인지 확인
@@ -47,6 +111,18 @@ Producer ── submit(zoneId, Job) ──► ZoneScheduler
 - 서로 다른 Zone의 두 Job이 제한 시간 안에 같은 실행 구간에 진입하는지 확인
 - submitter의 첫 Job 접수 후 shutdown을 시작해 **접수 수와 실행 수가 같은지**, 종료 후 제출이 거부되는지 확인
 - 명시적 shutdown·join 없이도 소멸자가 Thread를 정리하고 제출된 Job 200개를 실행하는지 확인
+
+### 네트워크
+
+| 테스트 | 확인하는 것 |
+|---|---|
+| [`PacketAssemblerTest`](tests/PacketAssemblerTest.cpp) | 소켓 없이 조립기만 검사. 쪼개짐, 붙어 옴, 경계 걸침, 헤더 미완성, 잘못된 size 등 10개 경우 |
+| [`IocpServerTest`](tests/IocpServerTest.cpp) | 클라이언트 10개 × 패킷 100개(4~4,096바이트) 에코 일치, 송수신 바이트 수, 세션 종료 |
+| [`IocpInvalidPacketTest`](tests/IocpInvalidPacketTest.cpp) | 정상 패킷은 에코하고, size 0인 위조 헤더를 보내면 서버가 연결을 끊는지 |
+| [`IocpBurstTest`](tests/IocpBurstTest.cpp) | 패킷 100개를 한 번에 보내도 응답이 패킷 순서대로 오는지 (send 큐가 실제로 쌓이는 경우) |
+| [`IocpShutdownTest`](tests/IocpShutdownTest.cpp) | 연결된 채 서버를 종료해도 세션이 모두 소멸하는지 (아래 세션 수명 참고) |
+
+Debug 빌드와 AddressSanitizer 빌드에서 모두 통과합니다.
 
 ### 세션 수명: Job 실행 전 연결이 끊긴 경우
 
@@ -65,7 +141,7 @@ Producer ── submit(zoneId, Job) ──► ZoneScheduler
 
 ### 세션 수명: I/O가 걸린 채 서버를 종료하는 경우
 
-IOCP 에코 서버([`src/IocpServer.cpp`](src/IocpServer.cpp), [`src/Session.cpp`](src/Session.cpp))는 세션마다 recv나 send를 하나 걸어 두고, 완료 통지를 받은 네트워크 스레드가 다음 I/O를 겁니다. 완료 통지에는 세션 주소(completion key)만 담겨 옵니다. 따라서 OS가 I/O를 돌려주기 전에 세션을 지우면, 완료를 처리하는 스레드가 해제된 메모리에 접근합니다.
+IOCP 서버([`src/IocpServer.cpp`](src/IocpServer.cpp), [`src/Session.cpp`](src/Session.cpp))는 세션마다 I/O를 걸어 두고, 완료 통지를 받은 네트워크 스레드가 다음 I/O를 겁니다. 완료 통지에는 세션 주소(completion key)만 담겨 옵니다. 따라서 OS가 I/O를 돌려주기 전에 세션을 지우면, 완료를 처리하는 스레드가 해제된 메모리에 접근합니다.
 
 시나리오: 클라이언트가 에코를 한 번 마친 뒤 연결을 유지하고(서버는 다음 recv를 걸어 둔 상태), 서버가 `stop()`을 호출합니다.
 
@@ -159,7 +235,10 @@ MSVC Release, 16 논리 스레드 환경에서 측정했습니다. Zone 1~7의 J
 
 ## 범위와 한계
 
-이 저장소는 Zone 단위 실행 모델을 검증하는 기술 데모로, DB·게임 콘텐츠나 Cross-Zone 상태 변경은 구현하지 않습니다. 네트워크는 IOCP 에코 서버까지 구현했으며, 패킷 조립·send 큐·패킷을 Zone Job으로 전달하는 연결은 아직 없습니다.
+DB·회원가입·게임 콘텐츠는 아직 구현하지 않았습니다. 네트워크는 패킷 조립과 send 큐까지 구현했습니다. 패킷을 Zone Job으로 전달하는 연결은 아직 없습니다.
+
+- send 큐는 지금 네트워크 스레드만 호출합니다. 여러 스레드가 한 세션에 동시에 `send`하는 경우는 mutex로 보호했지만 테스트하지 않았습니다.
+- send 큐 길이에 제한이 없습니다. 클라이언트가 응답을 읽지 않으면 큐가 계속 커집니다.
 
 - Worker는 선택한 Zone의 JobQueue가 빌 때까지 처리합니다. Job이 계속 들어오는 Hot Zone은 Worker 하나를 계속 점유하며, Worker가 1개일 때 다른 Zone이 측정 내내 실행되지 못했습니다(위 Hot Zone 지연 측정). 공정성 제한은 구현하지 않았습니다.
 - Job은 예외를 Worker 밖으로 전달하지 않는다는 계약을 전제로 합니다. 처리되지 않은 예외에 대한 복구·격리 정책은 없습니다.
@@ -175,13 +254,14 @@ MSVC Release, 16 논리 스레드 환경에서 측정했습니다. Zone 1~7의 J
 - [`tests/SchedulerTest.cpp`](tests/SchedulerTest.cpp): 실행 규칙과 종료 동작 검증
 - [`tests/SessionLifetimeRepro.cpp`](tests/SessionLifetimeRepro.cpp): Job 실행 전 세션 해제로 생기는 use-after-free 재현 (수정 전 기록)
 - [`tests/SessionLifetimeTest.cpp`](tests/SessionLifetimeTest.cpp): 같은 순서에서 공동 소유로 세션 수명을 보장하는지 검증
-- [`src/IocpServer.cpp`](src/IocpServer.cpp), [`src/Session.cpp`](src/Session.cpp): IOCP 에코 서버, I/O별 세션 지분 관리
-- [`tests/IocpServerTest.cpp`](tests/IocpServerTest.cpp): 클라이언트 10개 × 메시지 100개 에코 일치와 송수신 바이트 검증
-- [`tests/IocpShutdownTest.cpp`](tests/IocpShutdownTest.cpp): 연결된 채 서버를 종료해도 세션이 모두 소멸하는지 검증
+- [`src/IocpServer.cpp`](src/IocpServer.cpp): accept·네트워크 스레드, 완료 처리, 패킷 꺼내기와 응답
+- [`src/Session.cpp`](src/Session.cpp): 세션별 recv, send 큐, I/O별 세션 지분 관리
+- [`src/PacketAssembler.cpp`](src/PacketAssembler.cpp): 길이 헤더로 바이트를 패킷으로 조립 (소켓과 무관)
+- [`tests/PacketAssemblerTest.cpp`](tests/PacketAssemblerTest.cpp), [`tests/IocpServerTest.cpp`](tests/IocpServerTest.cpp), [`tests/IocpInvalidPacketTest.cpp`](tests/IocpInvalidPacketTest.cpp), [`tests/IocpBurstTest.cpp`](tests/IocpBurstTest.cpp), [`tests/IocpShutdownTest.cpp`](tests/IocpShutdownTest.cpp): 네트워크 계층 검증 (위 표 참고)
 - [`bench/SchedulerBenchmark.cpp`](bench/SchedulerBenchmark.cpp): Worker 수별 처리량 측정
 - [`bench/HotZoneBenchmark.cpp`](bench/HotZoneBenchmark.cpp): Hot Zone 유무에 따른 다른 Zone의 대기 지연 측정
 
-CMake 타깃은 스케줄러 정적 라이브러리 `ZoneJobSchedulerCore`와, 이를 링크하는 정확성 테스트 `ZoneJobScheduler`·`SessionLifetimeTest`, 성능 측정 `SchedulerBenchmark`·`HotZoneBenchmark`, 문제 재현 `SessionLifetimeRepro`로 나뉩니다. IOCP 네트워크 계층은 별도 정적 라이브러리 `ServerNetwork`이며, 테스트 `IocpServerTest`·`IocpShutdownTest`가 링크합니다. 측정은 실행 시간이 길고 통과/실패를 판정하지 않으며, 재현 프로그램은 실패(ASan 보고)가 목적이므로 CTest에 등록하지 않았습니다. `ZJS_ENABLE_ASAN=ON`으로 configure하면 모든 타깃을 AddressSanitizer로 빌드합니다.
+CMake 타깃은 스케줄러 정적 라이브러리 `ZoneJobSchedulerCore`와, 이를 링크하는 정확성 테스트 `ZoneJobScheduler`·`SessionLifetimeTest`, 성능 측정 `SchedulerBenchmark`·`HotZoneBenchmark`, 문제 재현 `SessionLifetimeRepro`로 나뉩니다. IOCP 네트워크 계층은 별도 정적 라이브러리 `ServerNetwork`이며, 네트워크 테스트 5개(`PacketAssemblerTest`, `IocpServerTest`, `IocpInvalidPacketTest`, `IocpBurstTest`, `IocpShutdownTest`)가 링크합니다. 측정은 실행 시간이 길고 통과/실패를 판정하지 않으며, 재현 프로그램은 실패(ASan 보고)가 목적이므로 CTest에 등록하지 않았습니다. `ZJS_ENABLE_ASAN=ON`으로 configure하면 모든 타깃을 AddressSanitizer로 빌드합니다.
 
 ## Build / Run
 
@@ -216,4 +296,4 @@ ctest --test-dir build-asan -C Debug
 
 ## Tech Stack
 
-C++20, CMake, MSVC에서 검증했습니다. 작업 분배와 동기화에는 `std::thread`, `std::mutex`, `std::shared_mutex`, `std::condition_variable`, `std::atomic`을 사용합니다.
+C++20, CMake, MSVC에서 검증했습니다. 작업 분배와 동기화에는 `std::thread`, `std::mutex`, `std::shared_mutex`, `std::condition_variable`, `std::atomic`을 사용합니다. 네트워크는 Winsock2 IOCP(`WSARecv`, `WSASend`, `GetQueuedCompletionStatus`)를 사용하고, 세션 수명은 `std::shared_ptr`·`enable_shared_from_this`로 관리합니다.
